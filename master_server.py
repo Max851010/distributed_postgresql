@@ -2,6 +2,10 @@ import socket
 import select
 import signal
 import sys
+import hashlib
+from datetime import datetime
+import redis
+import sqlparse
 
 # Server A config
 HOST_MASTER = '0.0.0.0'
@@ -27,6 +31,16 @@ redis_client = redis.StrictRedis(host=HOST_REDIS, port=PORT_REDIS, db=REDIS_DB)
 # Flag to indicate server shutdown
 shutdown_flag = False
 server_socket = None  # Reference to the server socket
+PARTITION_NODES = {
+    0: {
+        'host': HOST_PARTITION1,
+        'port': PORT_PARTITION1
+    },
+    1: {
+        'host': HOST_PARTITION2,
+        'port': PORT_PARTITION2
+    }
+}
 
 
 # Helper function to get the next ID from Redis
@@ -35,6 +49,35 @@ def get_next_id(table_name, partition_id):
     # Increment and get the next available ID
     next_id = redis_client.incr(redis_key)
     return next_id
+
+
+def compute_partition_id(record_id, total_partitions):
+    return record_id % total_partitions
+
+
+def parse_insert_query(query):
+    """Parse an INSERT SQL query using sqlparse."""
+    parsed = sqlparse.parse(query)[0]
+    tokens = parsed.tokens
+
+    # Extract table name and values
+    table_name = None
+    values = None
+    columns = None
+
+    for i, token in enumerate(tokens):
+        if token.ttype is sqlparse.tokens.Keyword and token.value.upper(
+        ) == "INTO":
+            table_name = str(tokens[i + 2]).strip()  # Get table name
+        elif token.ttype is sqlparse.tokens.Keyword and token.value.upper(
+        ) == "VALUES":
+            values = str(tokens[i + 2]).strip()  # Get values
+            columns = str(tokens[i - 1]).strip()  # Get columns if present
+
+    if not table_name or not values:
+        raise ValueError("Invalid INSERT query format.")
+
+    return table_name, columns, values
 
 
 def handle_request(client_socket):
@@ -59,21 +102,23 @@ def handle_request(client_socket):
              )  # Troubleshooting print
         # Example: Parsing the INSERT query to extract table name and values
         # Assumes the query is in the form: "INSERT INTO table_name (col1, col2, ...) VALUES (val1, val2, ...)"
-        query_parts = query.split(
-            " ", 4
-        )  # Split the query into parts (INSERT, INTO, table_name, columns, values)
-        if len(query_parts) < 5:
-            client_socket.sendall(b"Invalid INSERT query format.")
-            return
 
-        table_name = query_parts[2].strip()
+        table_name, columns, query_values = parse_insert_query(query)
+        record_id = get_next_id(table_name)
+        partition_id = compute_partition_id(record_id, total_partitions)
+        query_values = query_values.replace("(", f"({next_id},", 1)
+        updated_query = f"INSERT INTO {table_name} {columns} VALUES {query_values}"
+        print(
+            f"[Master Server] Forwarding query to Partition C Server: {updated_query}"
+        )
         with socket.socket(socket.AF_INET,
                            socket.SOCK_STREAM) as server_c_socket:
-            server_c_socket.connect((HOST_C, PORT_C))
+            server_c_socket.connect((PARTITION_NODES[partition_id]['host'],
+                                     PARTITION_NODES[partition_id]['port']))
             server_c_socket.sendall(query.encode('utf-8'))
             response = server_c_socket.recv(1024)
             print(
-                f"[Master Server] Received response from Partition C Server: {response.decode('utf-8')}"
+                f"[Master Server] Received response from {if partition_id == 0 'partition 1' else 'partition 2'} Server: {response.decode('utf-8')}"
             )  # Troubleshooting print
             client_socket.sendall(response)
     else:
