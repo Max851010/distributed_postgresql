@@ -46,6 +46,18 @@ REPLICA_NODES = {
     }
 }
 
+NODE_PAIRS = [
+	{
+        'main': 0,
+        0: SHARDING_NODES[0],
+        1: REPLICA_NODES[0]
+    },
+    {
+        'main': 0,
+        0: SHARDING_NODES[1],
+        1: REPLICA_NODES[1]
+    }
+]
 
 def get_sharding_id(state_abbreviation):
     """
@@ -215,8 +227,12 @@ def handle_request(client_socket):
         )
         with socket.socket(socket.AF_INET,
                            socket.SOCK_STREAM) as server_c_socket:
-            server_c_socket.connect((SHARDING_NODES[sharding_id]['host'],
-                                     SHARDING_NODES[sharding_id]['port']))
+			
+			target_pair = NODE_PAIRS[sharding_id]
+            main_node = target_pair[target_pair['main']]
+
+            server_c_socket.connect((main_node['host']],
+                                     main_node['port']))
             server_c_socket.sendall(query.encode('utf-8'))
             response = server_c_socket.recv(1024)
             print(
@@ -232,13 +248,14 @@ def handle_request(client_socket):
 
             # Reconstruct the CREATE TABLE query for consistency
             formatted_query = f"CREATE TABLE {table_name} {columns_definition}"
+            for pair in NODE_PAIRS:
+                main_node = pair[pair['main']]
+                replica_node = pair[pair['main'] ^ 1]
 
-            for sharding_id, node in SHARDING_NODES.items():
-                # Forward the CREATE query to the sharding node
                 try:
                     with socket.socket(socket.AF_INET,
                                        socket.SOCK_STREAM) as sharding_socket:
-                        sharding_socket.connect((node['host'], node['port']))
+                        sharding_socket.connect((main_node['host'], main_node['port']))
                         print(
                             f"[Master Server] Sending CREATE query to Sharding {sharding_id + 1}"
                         )
@@ -252,12 +269,12 @@ def handle_request(client_socket):
                         f"[Master Server] Error connecting to Sharding {sharding_id + 1}: {e}"
                     )
 
-            for replica_id, node in SHARDING_NODES.items():
+    
                 # Forward the CREATE query to the replica node
                 try:
                     with socket.socket(socket.AF_INET,
                                        socket.SOCK_STREAM) as replica_socket:
-                        replica_socket.connect((replica_host, replica_port))
+                        replica_socket.connect((replica_node['host'], replica_node['port']))
                         print(
                             f"[Master Server] Sending CREATE query to Replica {replica_id + 1}"
                         )
