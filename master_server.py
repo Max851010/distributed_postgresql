@@ -227,7 +227,6 @@ def handle_request(client_socket):
         )
         with socket.socket(socket.AF_INET,
                            socket.SOCK_STREAM) as server_c_socket:
-			
 			target_pair = NODE_PAIRS[sharding_id]
             main_node = target_pair[target_pair['main']]
 
