@@ -2,13 +2,17 @@ import socket
 import psycopg2
 from psycopg2 import sql
 
-# Server C details
-HOST_UPDATE_SERVER = '0.0.0.0'  # Bind to all interfaces
-PORT_UPDATE_SERVER = 12347      # Port to listen on
+# Update Server details
+HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
+PORT_OWN_SERVER = 12347      # Port to listen on
 
-# Server B details (replica server)
-HOST_REPLICA_SERVER = 'localhost'  # Change to Server B's address
-PORT_REPLICA_SERVER = 12348        # Change to Server B's port
+# Replica Server details (replica server)
+HOST_ANOTHER_SERVER = 'localhost'  # Change to Server B's address
+PORT_ANOTHER_SERVER = 12348        # Change to Server B's port
+
+# Main Server details
+HOST_MAIN_SERVER = '...'
+POST_MAIN_Server = '...'
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
@@ -20,6 +24,15 @@ TABLE_NAME = "test1_table"
 
 # Log file name
 LOG_FILE = "sql_log.txt"
+
+
+# check this server is update server or replica server
+is_update_server = True
+update_server_host = HOST_OWN_SERVER
+update_server_port = PORT_OWN_SERVER
+replica_server_host = HOST_ANOTHER_SERVER
+replica_server_port = PORT_ANOTHER_SERVER
+
 
 
 # --- Database Functions ---
@@ -126,7 +139,7 @@ def sync_with_server_b(sql_message):
     """Send the SQL message to replica server B and wait for acknowledgment."""
     try:
         replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        replica_socket.connect((HOST_REPLICA_SERVER, PORT_REPLICA_SERVER))
+        replica_socket.connect((replica_server_host, replica_server_port))
         replica_socket.send(sql_message.encode())
 
         # Wait for acknowledgment
@@ -170,10 +183,10 @@ def start_server():
     create_database_if_not_exists()
     create_table()
 
-    server_c_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_c_socket.bind((HOST_UPDATE_SERVER, PORT_UPDATE_SERVER))
-    server_c_socket.listen(5)
-    print(f"Server C listening on {HOST_UPDATE_SERVER}:{PORT_UPDATE_SERVER}...")
+    server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_own_socket.bind((update_server_host, update_server_port))
+    server_own_socket.listen(5)
+    print(f"Own Server listening on {update_server_host}:{update_server_port}...")
 
     while True:
         client_socket, client_address = server_c_socket.accept()
@@ -189,6 +202,10 @@ def start_server():
         print(f"Sent response: {response}")
 
         client_socket.close()
+
+
+
+
 
 
 # --- Main Execution ---
