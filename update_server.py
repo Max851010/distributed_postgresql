@@ -148,11 +148,13 @@ def process_sql_message(sql_message):
     - Sync with Server B
     - Return response to the client
     """
-    # Step 1: Write to log file
-    write_log_to_file(sql_message)
 
-    # Step 2: Execute in local database
+
+    # Step 1: Execute in local database
     response = execute_sql_message(sql_message)
+    
+    # Step 2: Write to log file
+    write_log_to_file(sql_message)
 
     # Step 3: Sync with Server B
     sync_ack = sync_with_server_b(sql_message)
