@@ -179,6 +179,8 @@ def parse_create_query(query):
 
     if not table_name or not columns_definition:
         raise ValueError("Invalid CREATE TABLE query format.")
+    if not "state" in columns_definition.lower():
+        raise ValueError("Missing 'state' column in CREATE TABLE query.")
     return table_name, columns_definition
 
 
