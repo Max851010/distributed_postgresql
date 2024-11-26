@@ -12,7 +12,7 @@ PORT_ANOTHER_SERVER = 12348        # Change to Server B's port
 
 # Main Server details
 HOST_MAIN_SERVER = '...'
-POST_MAIN_Server = '...'
+PORT_MAIN_Server = '...'
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
