@@ -3,12 +3,12 @@ import psycopg2
 from psycopg2 import sql
 
 # Server C details
-HOST_C = '0.0.0.0'  # Bind to all interfaces
-PORT_C = 12347      # Port to listen on
+HOST_UPDATE_SERVER = '0.0.0.0'  # Bind to all interfaces
+PORT_UPDATE_SERVER = 12347      # Port to listen on
 
 # Server B details (replica server)
-HOST_B = 'localhost'  # Change to Server B's address
-PORT_B = 12348        # Change to Server B's port
+HOST_REPLICA_SERVER = 'localhost'  # Change to Server B's address
+PORT_REPLICA_SERVER = 12348        # Change to Server B's port
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
@@ -125,7 +125,7 @@ def sync_with_server_b(sql_message):
     """Send the SQL message to replica server B and wait for acknowledgment."""
     try:
         replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        replica_socket.connect((HOST_B, PORT_B))
+        replica_socket.connect((HOST_REPLICA_SERVER, PORT_REPLICA_SERVER))
         replica_socket.send(sql_message.encode())
 
         # Wait for acknowledgment
@@ -168,9 +168,9 @@ def start_server():
     create_table()
 
     server_c_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_c_socket.bind((HOST_C, PORT_C))
+    server_c_socket.bind((HOST_UPDATE_SERVER, PORT_UPDATE_SERVER))
     server_c_socket.listen(5)
-    print(f"Server C listening on {HOST_C}:{PORT_C}...")
+    print(f"Server C listening on {HOST_UPDATE_SERVER}:{PORT_UPDATE_SERVER}...")
 
     while True:
         client_socket, client_address = server_c_socket.accept()
