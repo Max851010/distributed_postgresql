@@ -4,7 +4,6 @@ import signal
 import sys
 import hashlib
 from datetime import datetime
-import redis
 import sqlparse
 
 # Server A config
@@ -18,8 +17,8 @@ HOST_SHARDING2 = 'localhost'
 PORT_SHARDING2 = 65434
 
 HOST_REPLICA1 = '192.168.12.47'
-PORT_REPLICA2 = 12347
-HOST_REPLICA1 = 'localhost'
+PORT_REPLICA1 = 12347
+HOST_REPLICA2 = 'localhost'
 PORT_REPLICA2 = 65434
 
 # Flag to indicate server shutdown
@@ -46,47 +45,15 @@ REPLICA_NODES = {
     }
 }
 
-NODE_PAIRS = [
-	{
-        'main': 0,
-        0: SHARDING_NODES[0],
-        1: REPLICA_NODES[0]
-    },
-    {
-        'main': 0,
-        0: SHARDING_NODES[1],
-        1: REPLICA_NODES[1]
-    }
-]
-
-def get_sharding_id(state_abbreviation):
-    """
-    Determine which shard (0 or 1) a state belongs to, with validation.
-
-    :param state_abbreviation: The state abbreviation (e.g., "AL", "NY").
-    :return: The shard number (0 or 1) if the abbreviation is valid; otherwise, None.
-    """
-    # Map of valid state abbreviations
-    valid_states = {
-        "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
-        "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
-        "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
-        "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
-        "WI", "WY"
-    }
-
-    # Validate the state abbreviation
-    if state_abbreviation not in valid_states:
-        print(f"Error: {state_abbreviation} is not a valid state abbreviation.")
-        return None
-
-    # Hash function to determine the shard
-    hash_value = hashlib.md5(state_abbreviation.encode()).hexdigest()
-    return int(hash_value, 16) % 2  # Modulo 2 for two shards
-
-
-import hashlib
-import sqlparse
+NODE_PAIRS = [{
+    'main': 0,
+    0: SHARDING_NODES[0],
+    1: REPLICA_NODES[0]
+}, {
+    'main': 0,
+    0: SHARDING_NODES[1],
+    1: REPLICA_NODES[1]
+}]
 
 
 def get_shard(state_abbreviation):
@@ -111,6 +78,28 @@ def get_shard(state_abbreviation):
     return int(hash_value, 16) % 2  # Modulo 2 for two shards
 
 
+def parse_select_query(query):
+    """Parse a SELECT SQL query using sqlparse."""
+    parsed = sqlparse.parse(query)[0]
+    tokens = parsed.tokens
+
+    table_name = None
+    columns = None
+
+    for i, token in enumerate(tokens):
+        print("token: ", token.value.upper(), ", type: ", token.ttype)
+        if token.ttype is sqlparse.tokens.Keyword and token.value.upper(
+        ) == "FROM":
+            table_name = str(tokens[i + 2]).strip()
+        elif token.ttype is sqlparse.tokens.Punctuation and token.value == ";":
+            columns = tokens[i - 1].value
+            break
+
+    if not table_name or not columns:
+        raise ValueError("Invalid SELECT query format.")
+    return table_name, columns
+
+
 def parse_insert_query(query):
     """
     Parse an INSERT SQL query using sqlparse and determine the sharding ID based on the 'state' column.
@@ -130,11 +119,14 @@ def parse_insert_query(query):
     for i, token in enumerate(tokens):
         if token.ttype is sqlparse.tokens.Keyword and token.value.upper(
         ) == "INTO":
-            table_name = str(tokens[i + 2]).strip()  # Get table name
-        elif token.ttype is sqlparse.tokens.Keyword and token.value.upper(
-        ) == "VALUES":
-            values = str(tokens[i + 2]).strip()  # Get values
-            columns = str(tokens[i - 1]).strip()  # Get columns if present
+            table_name = str(tokens[i +
+                                    2]).split("(")[0].strip()  # Get table name
+            columns = "(" + str(
+                tokens[i + 2]).split("(")[1].strip()  # Get columns if present
+        elif token.ttype is sqlparse.tokens.Punctuation and token.value.upper(
+        ) == ";":
+            values = str(tokens[i - 1]).replace("VALUES",
+                                                "").strip()  # Get values
 
     if not table_name or not values:
         raise ValueError("Invalid INSERT query format.")
@@ -150,9 +142,15 @@ def parse_insert_query(query):
     values_list = [val.strip().strip("'") for val in values[1:-1].split(",")]
 
     # Check if 'state' column exists and get its value
-    if "state" not in columns_list:
+    if not any(col.lower() == "state" for col in columns_list):
         raise ValueError("'state' column is required for sharding.")
-    state_index = columns_list.index("state")
+    state_index = next(
+        (i for i, col in enumerate(columns_list) if col.lower() == "state"),
+        None)
+    if state_index is None:
+        raise ValueError(
+            "'state' column (case-insensitive) is required for sharding.")
+
     state_value = values_list[state_index]
 
     # Determine shard ID
@@ -174,23 +172,13 @@ def parse_create_query(query):
         ) == "TABLE":
             # The table name comes after the TABLE keyword
             table_name = str(tokens[i + 2]).strip()
-        elif token.ttype is sqlparse.tokens.Punctuation and token.value == "(":
+        elif token.ttype is sqlparse.tokens.Punctuation and token.value == ";":
             # The column definitions are inside parentheses
-            start_index = i
-            end_index = len(
-                tokens) - 1  # Assume the last token ends the columns
-            for j in range(i + 1, len(tokens)):
-                if tokens[j].ttype is sqlparse.tokens.Punctuation and tokens[
-                        j].value == ")":
-                    end_index = j
-                    break
-            columns_definition = "".join(
-                str(t) for t in tokens[start_index:end_index + 1]).strip()
+            columns_definition = tokens[i - 1].value
             break
 
     if not table_name or not columns_definition:
         raise ValueError("Invalid CREATE TABLE query format.")
-
     return table_name, columns_definition
 
 
@@ -227,11 +215,10 @@ def handle_request(client_socket):
         )
         with socket.socket(socket.AF_INET,
                            socket.SOCK_STREAM) as server_c_socket:
-			target_pair = NODE_PAIRS[sharding_id]
+            target_pair = NODE_PAIRS[sharding_id]
             main_node = target_pair[target_pair['main']]
 
-            server_c_socket.connect((main_node['host']],
-                                     main_node['port']))
+            server_c_socket.connect(main_node['host'], main_node['port'])
             server_c_socket.sendall(query.encode('utf-8'))
             response = server_c_socket.recv(1024)
             print(
@@ -254,7 +241,8 @@ def handle_request(client_socket):
                 try:
                     with socket.socket(socket.AF_INET,
                                        socket.SOCK_STREAM) as sharding_socket:
-                        sharding_socket.connect((main_node['host'], main_node['port']))
+                        sharding_socket.connect(
+                            (main_node['host'], main_node['port']))
                         print(
                             f"[Master Server] Sending CREATE query to Sharding {sharding_id + 1}"
                         )
@@ -267,28 +255,7 @@ def handle_request(client_socket):
                     print(
                         f"[Master Server] Error connecting to Sharding {sharding_id + 1}: {e}"
                     )
-
-    
-                # Forward the CREATE query to the replica node
-                try:
-                    with socket.socket(socket.AF_INET,
-                                       socket.SOCK_STREAM) as replica_socket:
-                        replica_socket.connect((replica_node['host'], replica_node['port']))
-                        print(
-                            f"[Master Server] Sending CREATE query to Replica {replica_id + 1}"
-                        )
-                        replica_socket.sendall(formatted_query.encode('utf-8'))
-                        replica_response = replica_socket.recv(1024)
-                        print(
-                            f"[Master Server] Received response from Replica {replica_id + 1}: {replica_response.decode('utf-8')}"
-                        )
-                except Exception as e:
-                    print(
-                        f"[Master Server] Error connecting to Replica {replica_id + 1}: {e}"
-                    )
-
-            client_socket.sendall(
-                b"CREATE query forwarded to sharding nodes and replicas.")
+            client_socket.sendall(b"CREATE query forwarded to sharding nodes.")
 
         except Exception as e:
             print(f"[Master Server] Error processing CREATE query: {e}")
