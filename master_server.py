@@ -97,7 +97,7 @@ def parse_select_query(query):
 
     if not table_name or not columns:
         raise ValueError("Invalid SELECT query format.")
-    return table_name, columns
+    return table_name, columns, sharding_id
 
 
 def parse_insert_query(query):
