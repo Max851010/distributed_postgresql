@@ -70,7 +70,7 @@ def create_table():
         conn = connect_postgres(DB_NAME)
         cursor = conn.cursor()
         create_table_query = """
-        CREATE TABLE IF NOT EXISTS {TABLE_NAME}} (
+        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
             id SERIAL PRIMARY KEY,
             message TEXT NOT NULL,
             received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
