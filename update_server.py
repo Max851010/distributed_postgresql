@@ -1,11 +1,14 @@
 import socket
 import psycopg2
 from psycopg2 import sql
-from datetime import datetime
 
 # Server C details
-HOST_C = '0.0.0.0'  # Bind to all interfaces
-PORT_C = 12347      # Port to listen on
+HOST_UPDATE_SERVER = '0.0.0.0'  # Bind to all interfaces
+PORT_UPDATE_SERVER = 12347      # Port to listen on
+
+# Server B details (replica server)
+HOST_REPLICA_SERVER = 'localhost'  # Change to Server B's address
+PORT_REPLICA_SERVER = 12348        # Change to Server B's port
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
@@ -13,50 +16,52 @@ DB_USER = "kenyang"
 DB_PASSWORD = "ken890404"
 DB_HOST = "localhost"
 DB_PORT = "8888"
+TABLE_NAME = "test1_table"
+
+# Log file name
+LOG_FILE = "sql_log.txt"
 
 
-def create_database(dbname):
-# """Connect to the PostgreSQL by calling connect_postgres() function
-# Create a database named {DATABASE_NAME}
-# Close the connection"""
+# --- Database Functions ---
+
+def connect_postgres(dbname="postgres"):
+    """Connect to PostgreSQL using psycopg2 with the specified database."""
+    try:
+        connection = psycopg2.connect(
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            dbname=dbname,
+            port=DB_PORT
+        )
+        connection.autocommit = True
+        print(f"Connected to PostgreSQL database '{dbname}'.")
+        return connection
+    except Exception as error:
+        print(f"Failed to connect to PostgreSQL: {error}")
+        return None
+
+
+def create_database_if_not_exists():
+    """Create the database if it doesn't already exist."""
     connection = connect_postgres()
-    
     if connection is None:
         return
 
     try:
         cursor = connection.cursor()
-        cursor.execute("CREATE DATABASE {}".format(dbname))
-        print(f"Database '{dbname}' created successfully!")
-
+        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}';")
+        if not cursor.fetchone():
+            cursor.execute(f"CREATE DATABASE {DB_NAME};")
+            print(f"Database '{DB_NAME}' created successfully.")
+        else:
+            print(f"Database '{DB_NAME}' already exists.")
     except Exception as error:
         print(f"Failed to create database: {error}")
-
-    # finally:
-    #     if connection:
-    #         cursor.close()
-    #         connection.close()
-    #         print("Default PostgreSQL connection closed.")
-
-def connect_postgres(dbname="postgres"):
-# """Connect to the PostgreSQL using psycopg2 with default database
-# Return the connection"""
-    try:
-        
-        connection = psycopg2.connect(
-            user="kenyang",
-            password="ken890404", 
-            host="localhost",
-            dbname=dbname,
-            port='8888'
-        )
-        connection.autocommit = True 
-        print("Connected to PostgreSQL!")
-        return connection
-
-    except Exception as error:
-        print(f"Failed to connect to PostgreSQL: {error}")
-        return None
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
 
 def create_table():
@@ -64,134 +69,129 @@ def create_table():
     try:
         conn = connect_postgres(DB_NAME)
         cursor = conn.cursor()
-
-        # Create the table 'test1_table'
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS test1_table (
-            id SERIAL PRIMARY KEY,
-            message TEXT NOT NULL,
-            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
+        create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                message TEXT NOT NULL,
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
         cursor.execute(create_table_query)
-        conn.commit()
-        print("Table 'test1_table' is ready.")
-    except Exception as e:
-        print(f"Failed to create table: {e}")
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
-
-def delete_database(dbname):
-
-    connection = connect_postgres()
-
-    if connection is None:
-        return
-
-    try:
-        cursor = connection.cursor()
-
-
-        cursor.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(dbname)))
-        print(f"資料庫 '{dbname}' 刪除成功！")
-
+        print(f"Table '{TABLE_NAME}' is ready.")
     except Exception as error:
-        print(f"刪除資料庫失敗: {error}")
-
-
-def insert_sample_data():
-    """Insert 10 sample car data into 'test1_table'."""
-    try:
-        conn = connect_postgres(DB_NAME)
-        cursor = conn.cursor()
-        sample_data = [
-            ("Car 1", "Description of Car 1"),
-            ("Car 2", "Description of Car 2"),
-            ("Car 3", "Description of Car 3"),
-            ("Car 4", "Description of Car 4"),
-            ("Car 5", "Description of Car 5"),
-            ("Car 6", "Description of Car 6"),
-            ("Car 7", "Description of Car 7"),
-            ("Car 8", "Description of Car 8"),
-            ("Car 9", "Description of Car 9"),
-            ("Car 10", "Description of Car 10"),
-        ]
-        insert_query = """
-        INSERT INTO test1_table (message) VALUES (%s);
-        """
-        for car in sample_data:
-            cursor.execute(insert_query, (f"{car[0]} - {car[1]}",))
-        print("Inserted 10 sample rows into 'test1_table'.")
-    except Exception as e:
-        print(f"Failed to insert sample data: {e}")
+        print(f"Failed to create table: {error}")
     finally:
         if conn:
             cursor.close()
             conn.close()
 
-def process_sql_message(sql_message):
-    """Parse and execute the received SQL message."""
+
+def execute_sql_message(sql_message):
+    """Execute the SQL message in the database."""
     try:
         conn = connect_postgres(DB_NAME)
         cursor = conn.cursor()
         cursor.execute(sql_message)
         conn.commit()
-        
-        # Fetch results if it's a SELECT query
+
+        # Handle SELECT queries
         if sql_message.strip().lower().startswith("select"):
             results = cursor.fetchall()
             return f"Query Result: {results}"
-        return "SQL operation executed successfully."
-    except Exception as e:
-        return f"Failed to execute SQL message: {e}"
+        else:
+            return "SQL operation executed successfully."
+    except Exception as error:
+        return f"Failed to execute SQL message: {error}"
     finally:
         if conn:
             cursor.close()
             conn.close()
 
 
+# --- Logging Functions ---
 
-# Main execution
-# create_database(DB_NAME)  # Step 1: Create database if not exists
-# delete_database(DB_NAME)
-create_table()     # Step 2: Ensure the table exists in the database
-insert_sample_data()
-
-
-
-# # Step 4: Connect to the created database
-# try:
-#     conn = connect_postgres(DB_NAME)
-#     cursor = conn.cursor()
-#     print("Connected to PostgreSQL database.")
-# except Exception as e:
-#     print(f"Error connecting to the database: {e}")
-#     exit()
+def write_log_to_file(sql_message):
+    """Write the SQL operation to the log file."""
+    try:
+        with open(LOG_FILE, "a") as log_file:
+            log_file.write(sql_message + "\n")
+        print("SQL operation logged successfully.")
+    except Exception as error:
+        print(f"Failed to write to log file: {error}")
 
 
-# Start the server
-server_c_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_c_socket.bind((HOST_C, PORT_C))
-server_c_socket.listen(5)
-print(f"Server C listening on {HOST_C}:{PORT_C}...")
+# --- Replica Sync Functions ---
 
-while True:
-    client_socket, client_address = server_c_socket.accept()
-    print(f"Connection from {client_address}")
+def sync_with_server_b(sql_message):
+    """Send the SQL message to replica server B and wait for acknowledgment."""
+    try:
+        replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        replica_socket.connect((HOST_REPLICA_SERVER, PORT_REPLICA_SERVER))
+        replica_socket.send(sql_message.encode())
+
+        # Wait for acknowledgment
+        acknowledgment = replica_socket.recv(1024).decode()
+        replica_socket.close()
+        print(f"Received acknowledgment from Server B: {acknowledgment}")
+        return acknowledgment
+    except Exception as error:
+        print(f"Failed to sync with Server B: {error}")
+        return f"Failed: {error}"
+
+
+# --- SQL Message Processing ---
+
+def process_sql_message(sql_message):
+    """
+    Process the SQL message:
+    - Log to the local file
+    - Execute the SQL message
+    - Sync with Server B
+    - Return response to the client
+    """
+
+
+    # Step 1: Execute in local database
+    response = execute_sql_message(sql_message)
     
-    # Receive SQL message
-    data = client_socket.recv(1024).decode()
-    print(f"Received SQL message: {data}")
-    
-    # Process the SQL message and generate a response
-    response = process_sql_message(data)
-    client_socket.send(response.encode())
-    print(f"Sent response: {response}")
-    
-    client_socket.close()
+    # Step 2: Write to log file
+    write_log_to_file(sql_message)
 
-# Close connections when the server shuts down
-cursor.close()
-conn.close()
+    # Step 3: Sync with Server B
+    sync_ack = sync_with_server_b(sql_message)
+    response += f" | Sync Status: {sync_ack}"
+    return response
+
+
+# --- Server Functions ---
+
+def start_server():
+    """Start Server C to listen for client connections and process SQL messages."""
+    create_database_if_not_exists()
+    create_table()
+
+    server_c_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_c_socket.bind((HOST_UPDATE_SERVER, PORT_UPDATE_SERVER))
+    server_c_socket.listen(5)
+    print(f"Server C listening on {HOST_UPDATE_SERVER}:{PORT_UPDATE_SERVER}...")
+
+    while True:
+        client_socket, client_address = server_c_socket.accept()
+        print(f"Connection from {client_address}")
+
+        # Receive SQL message
+        data = client_socket.recv(1024).decode()
+        print(f"Received SQL message: {data}")
+
+        # Process the SQL message
+        response = process_sql_message(data)
+        client_socket.send(response.encode())
+        print(f"Sent response: {response}")
+
+        client_socket.close()
+
+
+# --- Main Execution ---
+
+if __name__ == "__main__":
+    start_server()
