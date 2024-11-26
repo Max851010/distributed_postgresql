@@ -69,15 +69,15 @@ def create_table():
     try:
         conn = connect_postgres(DB_NAME)
         cursor = conn.cursor()
-        create_table_query = """
-        CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
-            id SERIAL PRIMARY KEY,
-            message TEXT NOT NULL,
-            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
+        create_table_query = f"""
+            CREATE TABLE IF NOT EXISTS {TABLE_NAME} (
+                id SERIAL PRIMARY KEY,
+                message TEXT NOT NULL,
+                received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """
         cursor.execute(create_table_query)
-        print("Table '{TABLE_NAME}' is ready.")
+        print(f"Table '{TABLE_NAME}' is ready.")
     except Exception as error:
         print(f"Failed to create table: {error}")
     finally:
