@@ -91,7 +91,7 @@ jobs:
           docker pull chengyentsai851010/master_server &&
           docker stop master-server-container || true &&
           docker rm master-server-container || true &&
-          docker run -d --name master-server-container -p 8001:8001 chengyentsai851010/master_server
+          docker run -p 8001:8001 chengyentsai851010/master_server
         "
 
     # Step 6: Deploy Update Server to GCE Node 3
@@ -105,5 +105,5 @@ jobs:
           docker pull chengyentsai851010/update_server &&
           docker stop update-server-container || true &&
           docker rm update-server-container || true &&
-          docker run -d --name update-server-container -p 8002:8002 chengyentsai851010/update_server
+          docker run -p 8002:8002 chengyentsai851010/update_server
         "
