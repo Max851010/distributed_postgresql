@@ -1,5 +1,7 @@
 #gcloud auth login
-
+cd master_server && pip3 freeze > requirements.txt && cd ..
+cd update_server && pip3 freeze > requirements.txt && cd ..
+cd client && pip3 freeze > requirements.txt && cd ..
 docker build -t master-server ./master_server
 docker build -t update-server ./update_server
 docker build -t client ./client
