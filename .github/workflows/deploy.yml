@@ -1,0 +1,106 @@
+name: Docker Deployment to GCE Nodes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # Step 1: Checkout code
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'  # Specify the Python version to use
+
+    # Install dependencies for client
+    - name: Install Client dependencies
+      run: |
+        cd client
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Install dependencies for master_server
+    - name: Install Master Server dependencies
+      run: |
+        cd master_server
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Install dependencies for update_server
+    - name: Install Update Server dependencies
+      run: |
+        cd update_server
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Step 2: Log in to Docker Hub
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    # Step 3: Build and push Docker images
+    - name: Build and push Client image
+      run: |
+        docker build -t chengyentsai851010/client ./client
+        docker push chengyentsai851010/client
+
+    - name: Build and push Master Server image
+      run: |
+        docker build -t chengyentsai851010/master_server ./master_server
+        docker push chengyentsai851010/master_server
+
+    - name: Build and push Update Server image
+      run: |
+        docker build -t chengyentsai851010/update_server ./update_server
+        docker push chengyentsai851010/update_server
+
+    # Step 4: Deploy Client to GCE Node 1
+    - name: Deploy Client
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.GCE_SSH_KEY }}
+    - name: SSH and Deploy Client
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.CLIENT_IP }} "
+          docker pull chengyentsai851010/client &&
+          docker stop client-container || true &&
+          docker rm client-container || true &&
+          docker run -d --name client-container -p 5000:5000 chengyentsai851010/client
+        "
+
+    # Step 5: Deploy Master Server to GCE Node 2
+    - name: Deploy Master Server
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.GCE_SSH_KEY }}
+    - name: SSH and Deploy Master Server
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.MASTER_NODE_IP }} "
+          docker pull chengyentsai851010/master_server &&
+          docker stop master-server-container || true &&
+          docker rm master-server-container || true &&
+          docker run -d --name master-server-container -p 5001:5001 chengyentsai851010/master_server
+        "
+
+    # Step 6: Deploy Update Server to GCE Node 3
+    - name: Deploy Update Server
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.GCE_SSH_KEY }}
+    - name: SSH and Deploy Update Server
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.UPDATE_NODE0_IP }} "
+          docker pull chengyentsai851010/update_server &&
+          docker stop update-server-container || true &&
+          docker rm update-server-container || true &&
+          docker run -d --name update-server-container -p 5002:5002 chengyentsai851010/update_server
+        "

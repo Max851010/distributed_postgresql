@@ -20,5 +20,5 @@ deactivate
 3. Update requirements.txt
 
 ```bash
-freeze > requirements.txt
+pip3 freeze > requirements.txt
 ```
