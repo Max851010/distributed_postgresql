@@ -332,10 +332,6 @@ def handle_sigint(signum, frame):
         print("[Master Server] Closing server socket and releasing port...")
         server_socket.close()  # Close the server socket to release the port
 
-    # if node_health_manager:
-    #     node_health_manager.join()  # Wait for the node health manager to finish
-
-
 def run_server():
     global shutdown_flag
     # global shutdown_flag, node_health_manager
@@ -347,13 +343,6 @@ def run_server():
 
     poller = select.poll()
     poller.register(server_socket, select.POLLIN)
-
-    # Start the node health manager
-    # node_health_manager = threading.Thread(
-    #     target=node_health_monitor,
-    # )
-
-    # node_health_manager.start()
 
     # Set up SIGINT handler
     signal.signal(signal.SIGINT, handle_sigint)
