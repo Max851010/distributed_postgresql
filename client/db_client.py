@@ -1,5 +1,6 @@
 import socket
 import os
+from pprint import pprint
 
 # Master Server details
 HOST_MASTER = '10.128.0.2'  # Replace with Master Server's IP address
@@ -10,14 +11,14 @@ print(f"Connecting to Master Server {HOST_MASTER}:{PORT_MASTER}")
 client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 client_socket.connect((HOST_MASTER, PORT_MASTER))
 
-user_input = os.getenv('USER_INPUT', 'default_value')
-print(f"You provided: {user_input}")
+user_input = input("Enter your query: ")
 
 # Send data to Master Server
 client_socket.send(user_input.encode())
 
 # Receive response from Master Server
 response = client_socket.recv(1024).decode()
-print(f"Response from Master Server: {response}")
+print("Response from Master Server:")
+pprint(response)
 
 client_socket.close()
