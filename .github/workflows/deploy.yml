@@ -51,16 +51,19 @@ jobs:
     - name: Build and push Client image
       run: |
         docker build -t chengyentsai851010/client ./client
+        docker tag chengyentsai851010/client gcr.io/cse-512-443000/client
         docker push chengyentsai851010/client
 
     - name: Build and push Master Server image
       run: |
         docker build -t chengyentsai851010/master_server ./master_server
+        docker tag chengyentsai851010/master_server gcr.io/cse-512-443000/master_server
         docker push chengyentsai851010/master_server
 
     - name: Build and push Update Server image
       run: |
         docker build -t chengyentsai851010/update_server ./update_server
+        docker tag chengyentsai851010/update_server gcr.io/cse-512-443000/update_server
         docker push chengyentsai851010/update_server
 
     # Step 4: Deploy Client to GCE Node 1
