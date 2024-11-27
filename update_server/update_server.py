@@ -12,7 +12,7 @@ PORT_ANOTHER_SERVER = 12348        # Change to Server B's port
 
 # Main Server details
 HOST_MAIN_SERVER = '...'
-PORT_MAIN_Server = '...'
+PORT_MAIN_SERVER = '...'
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
@@ -98,6 +98,16 @@ def create_table():
             cursor.close()
             conn.close()
 
+# --- Read Log File ---
+
+def get_queries():
+    """Reads queries from log.txt and returns them as a list."""
+    file_path = LOG_FILE
+    try:
+        with open(file_path, "r") as file:
+            return file.readlines()
+    except FileNotFoundError:
+        return []
 
 def execute_sql_message(sql_message):
     """Execute the SQL message in the database."""
@@ -151,6 +161,34 @@ def sync_with_server_b(sql_message):
         print(f"Failed to sync with Server B: {error}")
         return f"Failed: {error}"
 
+def sync_with_replica():
+    try:
+        replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        replica_socket.connect((replica_server_host, replica_server_port))
+        message = "Sync"
+        replica_socket.send(message.encode())
+
+        # Wait for Response
+        replica_count = replica_socket.recv(1024).decode()
+        replica_socket.close()
+        print(f"Received response from Server B: {replica_count}")
+    except Exception as error:
+        print(f"Failed to send Sync with Replica: {error}")
+        return f"Failed: {error}"
+
+    update_queries = get_queries()
+    missing_queries = update_queries[replica_count:]
+    
+    # Start Sending Missing Queries
+    print(f"Sending {len(missing_queries)} missing queries to replica")
+    for query in missing_queries:
+        replica_socket.sendall(query.encode())
+        # Wait for acknowledgment
+        acknowledgment = replica_socket.recv(1024).decode()
+        print(f"Received acknowledgment from Replica: {acknowledgment}")
+    replica_socket.sendall(b"Sync Complete")
+    replica_socket.close()
+    
 
 # --- SQL Message Processing ---
 
@@ -163,7 +201,6 @@ def process_sql_message(sql_message):
     - Return response to the client
     """
 
-
     # Step 1: Execute in local database
     response = execute_sql_message(sql_message)
     
@@ -171,8 +208,8 @@ def process_sql_message(sql_message):
     write_log_to_file(sql_message)
 
     # Step 3: Sync with Server B
-    sync_ack = sync_with_server_b(sql_message)
-    response += f" | Sync Status: {sync_ack}"
+    #sync_ack = sync_with_server_b(sql_message)
+    #response += f" | Sync Status: {sync_ack}"
     return response
 
 
@@ -182,6 +219,7 @@ def start_server():
     """Start Server C to listen for client connections and process SQL messages."""
     create_database_if_not_exists()
     create_table()
+    sync_with_replica()
 
     server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_own_socket.bind((update_server_host, update_server_port))
@@ -189,26 +227,111 @@ def start_server():
     print(f"Own Server listening on {update_server_host}:{update_server_port}...")
 
     while True:
-        client_socket, client_address = server_c_socket.accept()
+        client_socket, client_address = server_own_socket.accept()
         print(f"Connection from {client_address}")
 
         # Receive SQL message
         data = client_socket.recv(1024).decode()
         print(f"Received SQL message: {data}")
 
+        if client_address == replica_server_host and data == "Switch Role":
+            response = "Ok, let's switch role"
+            client_socket.send(response.encode())
+            client_socket.close()
+            server_own_socket.close()
+            switch_role()
+
         # Process the SQL message
         response = process_sql_message(data)
+        sync_ack = sync_with_replica()
+        response += f" | Sync Status: {sync_ack}"
+
         client_socket.send(response.encode())
         print(f"Sent response: {response}")
 
         client_socket.close()
 
 
+def start_replica():
+    create_database_if_not_exists()
+    create_table()
+
+    server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_own_socket.bind((replica_server_host, replica_server_port))
+    server_own_socket.listen(5)
+    print(f"Own Server listening on {replica_server_host}:{replica_server_port}...")
+
+    while True:
+        client_socket, client_address = server_own_socket.accept()
+        print(f"Connection from {client_address}")
+
+        # Receive SQL message
+        data = client_socket.recv(1024).decode()
+        print(f"Received SQL message: {data}")
+
+        if data == "Sync":
+            replica_queries = get_queries()
+            client_socket.sendall(str(len(replica_queries)).encode())
+
+            # Receiving missing queriess
+            while True:
+                data = client_socket.recv(1024).decode()
+                if data == "Sync Complete":
+                    break
+                # Process the SQL message
+                response = process_sql_message(data)
+                client_socket.send(response.encode())
+                print(f"Sent response: {response}")
+            client_socket.close()
+            continue
+
+        # Process the SQL message
+        response = process_sql_message(data)
+        client_socket.send(response.encode())
+        print(f"Sent response: {response}")
+        client_socket.close()
+
+        if client_address == HOST_MAIN_SERVER:
+
+            # Send message to update server to switch role
+            try:
+                client_socket.connect((update_server_host, update_server_port))
+                print(f"Successcully Connect to {update_server_port}:{update_server_port}")
+                
+                message = "Switch Role"
+                client_socket.sendall(message.encode())
+                print(f"Send Message to Update Server: {message}")
+               
+                response = client_socket.recv(1024).decode()
+                print(f"Receive Response frome Update Server: {response}")
+
+            except Exception as e:
+                print(f"Exception: {e}")
+
+            finally:
+                client_socket.close()
+                server_own_socket.close()
+                switch_role()
+        
 
 
+# --- Switch role between update server and replica ---
+def switch_role():
+    update_server_host, replica_server_host = replica_server_host, update_server_host
+    update_server_port, replica_server_port = replica_server_port, update_server_port
+    
+    if is_update_server:
+        is_update_server = False
+        start_replica()
+    else:
+        is_update_server = True
+        start_server()
 
 
 # --- Main Execution ---
 
 if __name__ == "__main__":
-    start_server()
+    if is_update_server:
+        start_server()
+    start_replica()
+    
