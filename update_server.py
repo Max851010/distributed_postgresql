@@ -27,7 +27,7 @@ LOG_FILE = "sql_log.txt"
 
 
 # check this server is update server or replica server
-is_update_server = False
+is_update_server = True
 update_server_host = HOST_OWN_SERVER
 update_server_port = PORT_OWN_SERVER
 replica_server_host = HOST_ANOTHER_SERVER
