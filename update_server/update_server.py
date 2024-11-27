@@ -15,7 +15,7 @@ PORT_ANOTHER_SERVER = 12348        # Change to Server B's port
 
 # Main Server details
 HOST_MAIN_SERVER = '...'
-PORT_MAIN_Server = '...'
+PORT_MAIN_SERVER = '...'
 
 # PostgreSQL connection details
 DB_NAME = "test_db"
@@ -100,6 +100,8 @@ def create_table():
             cursor.close()
             conn.close()
 
+# --- Read Log File ---
+
 def get_queries():
     """Reads queries from log.txt and returns them as a list."""
     file_path = LOG_FILE
@@ -108,12 +110,6 @@ def get_queries():
             return file.readlines()
     except FileNotFoundError:
         return []
-
-def append_queries(queries):
-    """Appends missing queries to the log.txt file."""
-    file_path = LOG_FILE
-    with open(file_path, "a") as file:
-        file.writelines(queries)
 
 def execute_sql_message(sql_message):
     """Execute the SQL message in the database."""
@@ -265,7 +261,6 @@ def process_sql_message(sql_message):
     - Return response to the client
     """
 
-
     # Step 1: Execute in local database
     response = execute_sql_message(sql_message)
     
@@ -273,8 +268,8 @@ def process_sql_message(sql_message):
     write_log_to_file(sql_message, LOG_FILE)
 
     # Step 3: Sync with Server B
-    sync_ack = sync_with_server_b(sql_message)
-    response += f" | Sync Status: {sync_ack}"
+    #sync_ack = sync_with_server_b(sql_message)
+    #response += f" | Sync Status: {sync_ack}"
     return response
 
 
@@ -302,6 +297,7 @@ def start_server():
             response = "Ok, let's switch role"
             client_socket.send(response.encode())
             client_socket.close()
+            server_own_socket.close()
             switch_role()
 
         # Process the SQL message
@@ -310,7 +306,6 @@ def start_server():
         print(f"Sent response: {response}")
 
         client_socket.close()
-
 
 
 def start_replica():
@@ -333,6 +328,8 @@ def start_replica():
         if data == "Sync":
             replica_queries = get_queries()
             client_socket.sendall(str(len(replica_queries)).encode())
+
+            # Receiving missing queriess
             while True:
                 data = client_socket.recv(1024).decode()
                 if data == "Sync Complete":
@@ -369,6 +366,7 @@ def start_replica():
 
             finally:
                 client_socket.close()
+                server_own_socket.close()
                 switch_role()
         
 
@@ -384,7 +382,6 @@ def switch_role():
     else:
         is_update_server = True
         start_server()
-
 
 
 # --- Main Execution ---

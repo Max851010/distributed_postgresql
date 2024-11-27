@@ -8,7 +8,7 @@ import sqlparse
 
 # Server A config
 HOST_MASTER = '0.0.0.0'
-PORT_MASTER = 8888
+PORT_MASTER = 8001
 
 # Server Sharding 1 and Server Sharding 2 config
 HOST_SHARDING1 = '192.168.12.47'
