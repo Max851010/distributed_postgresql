@@ -1,6 +1,9 @@
 import socket
 import psycopg2
 from psycopg2 import sql
+from collections import deque
+import threading
+import time
 
 # Update Server details
 HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
@@ -24,7 +27,7 @@ TABLE_NAME = "test1_table"
 
 # Log file name
 LOG_FILE = "sql_log.txt"
-
+LOG_DIFF_FILE = "sql_log_diff.txt"
 
 # check this server is update server or replica server
 is_update_server = True
@@ -32,7 +35,6 @@ update_server_host = HOST_OWN_SERVER
 update_server_port = PORT_OWN_SERVER
 replica_server_host = HOST_ANOTHER_SERVER
 replica_server_port = PORT_ANOTHER_SERVER
-
 
 
 # --- Database Functions ---
@@ -133,10 +135,10 @@ def execute_sql_message(sql_message):
 
 # --- Logging Functions ---
 
-def write_log_to_file(sql_message):
+def write_log_to_file(sql_message, file):
     """Write the SQL operation to the log file."""
     try:
-        with open(LOG_FILE, "a") as log_file:
+        with open(file, "a") as log_file:
             log_file.write(sql_message + "\n")
         print("SQL operation logged successfully.")
     except Exception as error:
@@ -145,50 +147,108 @@ def write_log_to_file(sql_message):
 
 # --- Replica Sync Functions ---
 
+def check_replica_node_status():
+    global replica_node_status
+
+    while True:
+        try:
+            replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            replica_socket.connect((replica_server_host, replica_server_port))
+
+            # Wait for acknowledgment
+            acknowledgment = replica_socket.recv(1024).decode()
+            replica_socket.close()
+            print(f"Received acknowledgment from Server B: {acknowledgment}")
+            print("Connected to Server B")
+
+            break
+        except Exception as error:
+            print(f"Failed to sync with Server B: {error}")
+        finally:
+            time.sleep(5)
+
+    
+def sync_missing_queries():
+    global missing_queries, replica_node_status
+
+    while missing_queries:
+        sql_message = missing_queries[0]
+
+        print(f"Resyncing with Server B: {sql_message}")
+
+        try:
+            replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            replica_socket.connect((replica_server_host, replica_server_port))
+            replica_socket.send(sql_message.encode())
+
+            # Wait for acknowledgment
+            acknowledgment = replica_socket.recv(1024).decode()
+            replica_socket.close()
+
+            # Remove the query from the queue
+            missing_queries.popleft()
+            print(f"Received acknowledgment from Server B: {acknowledgment}")
+        except Exception as error:
+            print(f"Failed to resync with Server B: {error}")
+            replica_node_status = "DOWN"
+            check_replica_node_status()
+
+def manage_missing_queries():
+    global missing_queries, replica_node_status
+
+    # Check the status of the replica node
+    check_replica_node_status()
+
+    missing_queries = deque([])
+
+    with open(LOG_DIFF_FILE, "r") as log_file:
+        lines = log_file.readlines()
+        for line in lines:
+            missing_queries.append(line.strip())
+
+    replica_node_status = "RECOVERING"
+
+    # resync missing queries with server B
+    sync_missing_queries()
+    replica_node_status = "RUNNING"
+
+
 def sync_with_server_b(sql_message):
     """Send the SQL message to replica server B and wait for acknowledgment."""
-    try:
-        replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        replica_socket.connect((replica_server_host, replica_server_port))
-        replica_socket.send(sql_message.encode())
+    global missing_queries, replica_node_status, missing_query_manager
 
-        # Wait for acknowledgment
-        acknowledgment = replica_socket.recv(1024).decode()
-        replica_socket.close()
-        print(f"Received acknowledgment from Server B: {acknowledgment}")
-        return acknowledgment
-    except Exception as error:
-        print(f"Failed to sync with Server B: {error}")
-        return f"Failed: {error}"
+    if replica_node_status == "DOWN":
+        write_log_to_file(sql_message, LOG_DIFF_FILE)
+        print(f"Server B is down.")
+        return "DOWN"
+    elif replica_node_status == "RECOVERING":
+        missing_queries.append(sql_message)
+        print("Recovering with Server B...")
+        return "RECOVERING"
+    else:
+        try:
+            replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            replica_socket.connect((replica_server_host, replica_server_port))
+            replica_socket.send(sql_message.encode())
 
-def sync_with_replica():
-    try:
-        replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        replica_socket.connect((replica_server_host, replica_server_port))
-        message = "Sync"
-        replica_socket.send(message.encode())
+            # Wait for acknowledgment
+            acknowledgment = replica_socket.recv(1024).decode()
+            replica_socket.close()
+            print(f"Received acknowledgment from Server B: {acknowledgment}")
+            replica_node_status = "RUNNING"
+            if missing_query_manager and missing_query_manager.is_alive():
+                missing_query_manager.join()
+            return acknowledgment
+        except Exception as error:
+            replica_node_status = "DOWN"
+            write_log_to_file(sql_message, LOG_DIFF_FILE)
 
-        # Wait for Response
-        replica_count = replica_socket.recv(1024).decode()
-        replica_socket.close()
-        print(f"Received response from Server B: {replica_count}")
-    except Exception as error:
-        print(f"Failed to send Sync with Replica: {error}")
-        return f"Failed: {error}"
+            missing_query_manager = threading.Thread(target=manage_missing_queries)
+            missing_query_manager.start()
 
-    update_queries = get_queries()
-    missing_queries = update_queries[replica_count:]
-    
-    # Start Sending Missing Queries
-    print(f"Sending {len(missing_queries)} missing queries to replica")
-    for query in missing_queries:
-        replica_socket.sendall(query.encode())
-        # Wait for acknowledgment
-        acknowledgment = replica_socket.recv(1024).decode()
-        print(f"Received acknowledgment from Replica: {acknowledgment}")
-    replica_socket.sendall(b"Sync Complete")
-    replica_socket.close()
-    
+            print(f"Failed to sync with Server B: {error}")
+            return f"Failed: {error}"
+
 
 # --- SQL Message Processing ---
 
@@ -205,7 +265,7 @@ def process_sql_message(sql_message):
     response = execute_sql_message(sql_message)
     
     # Step 2: Write to log file
-    write_log_to_file(sql_message)
+    write_log_to_file(sql_message, LOG_FILE)
 
     # Step 3: Sync with Server B
     #sync_ack = sync_with_server_b(sql_message)
@@ -219,7 +279,6 @@ def start_server():
     """Start Server C to listen for client connections and process SQL messages."""
     create_database_if_not_exists()
     create_table()
-    sync_with_replica()
 
     server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_own_socket.bind((update_server_host, update_server_port))
@@ -243,9 +302,6 @@ def start_server():
 
         # Process the SQL message
         response = process_sql_message(data)
-        sync_ack = sync_with_replica()
-        response += f" | Sync Status: {sync_ack}"
-
         client_socket.send(response.encode())
         print(f"Sent response: {response}")
 
@@ -333,5 +389,6 @@ def switch_role():
 if __name__ == "__main__":
     if is_update_server:
         start_server()
-    start_replica()
+    else:
+        start_replica()
     
