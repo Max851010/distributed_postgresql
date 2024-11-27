@@ -85,19 +85,26 @@ def parse_select_query(query):
 
     table_name = None
     columns = None
+    sharding_id = None
+    where_condition = None
 
     for i, token in enumerate(tokens):
         print("token: ", token.value.upper(), ", type: ", token.ttype)
-        if token.ttype is sqlparse.tokens.Keyword and token.value.upper(
-        ) == "FROM":
+        if token.ttype is sqlparse.tokens.Keyword.DML and token.value.upper(
+        ) == "SELECT":
+            columns = str(tokens[i + 2]).strip()
+        elif token.ttype is sqlparse.tokens.Keyword and token.value == "FROM":
             table_name = str(tokens[i + 2]).strip()
-        elif token.ttype is sqlparse.tokens.Punctuation and token.value == ";":
-            columns = tokens[i - 1].value
-            break
+        elif i == len(
+                tokens
+        ) - 1 and token.ttype is not sqlparse.tokens.Punctuation:  # Where
+            where_condition = str(tokens[i]).strip()
+            sharding_id = get_shard(
+                str(tokens[i]).split('=')[1].strip().strip(";").strip("'"))
 
     if not table_name or not columns:
         raise ValueError("Invalid SELECT query format.")
-    return table_name, columns, sharding_id
+    return table_name, columns, sharding_id, where_condition
 
 
 def parse_insert_query(query):
@@ -191,14 +198,38 @@ def handle_request(client_socket):
     if query.startswith("SELECT"):
         print("[Master Server] Forwarding query to Replica Servers"
              )  # Troubleshooting print
-        with socket.socket(socket.AF_INET,
-                           socket.SOCK_STREAM) as server_b_socket:
-            server_b_socket.connect((HOST_SHARDING2, PORT_SHARDING2))
-            server_b_socket.sendall(query.encode('utf-8'))
-            response = server_b_socket.recv(1024)
-            print(
-                f"[Master Server] Received response from Partition B Server: {response.decode('utf-8')}"
-            )  # Troubleshooting print
+        table_name, columns, sharding_id, where_condition = parse_select_query(
+            query)
+        if sharding_id == 0 or sharding_id == 1:
+            query = f"SELECT {columns} FROM {table_name} WHERE {where_condition}"
+            with socket.socket(socket.AF_INET,
+                               socket.SOCK_STREAM) as sharding_socket:
+                target_pair = NODE_PAIRS[sharding_id]
+                main_node = target_pair[target_pair['main']]
+
+                sharding_socket.connect(main_node['host'], main_node['port'])
+                sharding_socket.sendall(query.encode('utf-8'))
+                response = sharding_socket.recv(1024)
+                print(
+                    f"[Master Server] Received response from Sharding {sharding_id} Server: {response.decode('utf-8')}"
+                )
+                client_socket.sendall(response)
+        elif sharding_id is None:
+            query = f"SELECT {columns} FROM {table_name};"
+            response = ""
+            for i in range(2):
+                with socket.socket(socket.AF_INET,
+                                   socket.SOCK_STREAM) as sharding_socket:
+                    target_pair = NODE_PAIRS[i]
+                    main_node = target_pair[target_pair['main']]
+
+                    sharding_socket.connect(main_node['host'],
+                                            main_node['port'])
+                    sharding_socket.sendall(query.encode('utf-8'))
+                    final_response += sharding_socket.recv(1024)
+                    print(
+                        f"[Master Server] Received response from Sharding {i} Server: {response.decode('utf-8')}"
+                    )
             client_socket.sendall(response)
     elif query.startswith("INSERT"):
         print("[Master Server] Handling INSERT query")
@@ -216,13 +247,13 @@ def handle_request(client_socket):
             f"[Master Server] Forwarding query to {'sharding 1' if sharding_id == 0 else 'sharding 2'} Server: {updated_query}"
         )
         with socket.socket(socket.AF_INET,
-                           socket.SOCK_STREAM) as server_c_socket:
+                           socket.SOCK_STREAM) as sharding_socket:
             target_pair = NODE_PAIRS[sharding_id]
             main_node = target_pair[target_pair['main']]
 
-            server_c_socket.connect(main_node['host'], main_node['port'])
-            server_c_socket.sendall(query.encode('utf-8'))
-            response = server_c_socket.recv(1024)
+            sharding_socket.connect(main_node['host'], main_node['port'])
+            sharding_socket.sendall(query.encode('utf-8'))
+            response = sharding_socket.recv(1024)
             print(
                 f"[Master Server] Received response from {'sharding 1' if sharding_id == 0 else 'sharding 2'} Server: {response.decode('utf-8')}"
             )  # Troubleshooting print
