@@ -5,6 +5,8 @@ import sys
 import hashlib
 from datetime import datetime
 import sqlparse
+import threading
+import time
 
 # Server A config
 HOST_MASTER = '0.0.0.0'
@@ -77,6 +79,26 @@ def get_shard(state_abbreviation):
     hash_value = hashlib.md5(state_abbreviation.encode()).hexdigest()
     return int(hash_value, 16) % 2  # Modulo 2 for two shards
 
+def check_node_health(node):
+    try:
+        node_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        node_socket.connect((node['host'], node['port']))
+        node_socket.close()
+        return True
+    except ConnectionRefusedError:
+        return False
+
+def node_health_monitor():
+    while True:
+        for node_pair in NODE_PAIRS:
+            main_node = node_pair[node_pair['main']]
+            if not check_node_health(main_node):
+                # Switch the main node
+                node_pair['main'] ^= 1
+
+        time.sleep(5)
+
+        
 
 def parse_select_query(query):
     """Parse a SELECT SQL query using sqlparse."""
@@ -266,16 +288,19 @@ def handle_request(client_socket):
 
 
 def handle_sigint(signum, frame):
-    global shutdown_flag, server_socket
+    global shutdown_flag, server_socket, node_health_manager
     print("[Master Server] Received SIGINT. Shutting down...")
     shutdown_flag = True
     if server_socket:
         print("[Master Server] Closing server socket and releasing port...")
         server_socket.close()  # Close the server socket to release the port
 
+    if node_health_manager:
+        node_health_manager.join()  # Wait for the node health manager to finish
+
 
 def run_server():
-    global shutdown_flag
+    global shutdown_flag, node_health_manager
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((HOST_MASTER, PORT_MASTER))
     server_socket.listen(5)
@@ -284,6 +309,13 @@ def run_server():
 
     poller = select.poll()
     poller.register(server_socket, select.POLLIN)
+
+    # Start the node health manager
+    node_health_manager = threading.Thread(
+        target=node_health_monitor,
+    )
+
+    node_health_manager.start()
 
     # Set up SIGINT handler
     signal.signal(signal.SIGINT, handle_sigint)
