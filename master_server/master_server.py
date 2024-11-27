@@ -325,7 +325,6 @@ def handle_request(client_socket):
 
 def handle_sigint(signum, frame):
     global shutdown_flag, server_socket
-    # global shutdown_flag, server_socket, node_health_manager
     print("[Master Server] Received SIGINT. Shutting down...")
     shutdown_flag = True
     if server_socket:
@@ -334,7 +333,6 @@ def handle_sigint(signum, frame):
 
 def run_server():
     global shutdown_flag
-    # global shutdown_flag, node_health_manager
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((HOST_MASTER, PORT_MASTER))
     server_socket.listen(5)
