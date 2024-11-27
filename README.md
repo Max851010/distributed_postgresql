@@ -22,3 +22,23 @@ deactivate
 ```bash
 pip3 freeze > requirements.txt
 ```
+
+## Execution
+
+1. Client Node
+
+```bash
+docker run -it -p 8000:8000 chengyentsai851010/client
+```
+
+2. Master Node
+
+```bash
+docker run -it -p 8001:8001 chengyentsai851010/master_server
+```
+
+3. Update Node
+
+```bash
+docker run -it -p 8002:8002 chengyentsai851010/update_server
+```
