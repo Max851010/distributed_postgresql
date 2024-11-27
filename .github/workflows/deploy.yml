@@ -78,7 +78,7 @@ jobs:
           docker stop client-container || true &&
           docker rm client-container || true
         "
-    # docker run -d --name client-container -p 8000:8000 chengyentsai851010/client
+    # docker run  -p 8000:8000 chengyentsai851010/client
 
     # Step 5: Deploy Master Server to GCE Node 2
     - name: Deploy Master Server
@@ -90,9 +90,10 @@ jobs:
         ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.MASTER_NODE_IP }} "
           docker pull chengyentsai851010/master_server &&
           docker stop master-server-container || true &&
-          docker rm master-server-container || true &&
-          docker run -p 8001:8001 chengyentsai851010/master_server
+          docker rm master-server-container || true
         "
+        
+    # docker run -p 8001:8001 chengyentsai851010/master_server
 
     # Step 6: Deploy Update Server to GCE Node 3
     - name: Deploy Update Server
@@ -104,6 +105,6 @@ jobs:
         ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.UPDATE_NODE0_IP }} "
           docker pull chengyentsai851010/update_server &&
           docker stop update-server-container || true &&
-          docker rm update-server-container || true &&
-          docker run -p 8002:8002 chengyentsai851010/update_server
+          docker rm update-server-container || true
         "
+    # docker run -p 8002:8002 chengyentsai851010/update_server
