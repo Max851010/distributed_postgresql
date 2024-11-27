@@ -2,7 +2,7 @@ import sys
 import pytest
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from master_server import parse_create_query, parse_insert_query
+from master_server import parse_create_query, parse_insert_query, parse_select_query
 
 
 class TestCreateQueryParser:
@@ -60,3 +60,41 @@ class TestInsertQueryParser:
             assert columns == "(PersonID, LastName, FirstName, Address, City)"
             assert values == "(1, 'John', 'Doe', '123 Main St', 'New York')"
             assert sharding_id == 0
+
+
+class TestSelectQueryParser:
+
+    def test_parse_select_query_test_case_1(self):
+        query = "SELECT PersonID, LastName, FirstName, Address, City FROM Persons;"
+        table_name, columns, sharding_id = parse_select_query(query)
+        assert table_name == "Persons"
+        assert columns == "PersonID, LastName, FirstName, Address, City"
+        assert sharding_id == None
+
+    def test_parse_select_query_test_case_1(self):
+        query = "SELECT PersonID, LastName, City FROM Persons;"
+        table_name, columns, sharding_id = parse_select_query(query)
+        assert table_name == "Persons"
+        assert columns == "PersonID, LastName, City"
+        assert sharding_id == None
+
+    def test_parse_select_query_test_case_2(self):
+        query = "SELECT * FROM Persons;"
+        table_name, columns, sharding_id = parse_select_query(query)
+        assert table_name == "Persons"
+        assert columns == "*"
+        assert sharding_id == None
+
+    def test_parse_select_query_test_case_with_where_CA(self):
+        query = "SELECT * FROM Persons WHERE State = 'CA';"
+        table_name, columns, sharding_id = parse_select_query(query)
+        assert table_name == "Persons"
+        assert columns == "*"
+        assert sharding_id == 1
+
+    def test_parse_select_query_test_case_with_where_NY(self):
+        query = "SELECT * FROM Persons WHERE State = 'NY';"
+        table_name, columns, sharding_id = parse_select_query(query)
+        assert table_name == "Persons"
+        assert columns == "*"
+        assert sharding_id == 0
