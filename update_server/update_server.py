@@ -4,6 +4,7 @@ from psycopg2 import sql
 from collections import deque
 import threading
 import time
+import select
 
 # Update Server details
 HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
@@ -275,37 +276,100 @@ def process_sql_message(sql_message):
 
 # --- Server Functions ---
 
+# def start_server():
+#     """Start Server C to listen for client connections and process SQL messages."""
+#     create_database_if_not_exists()
+#     create_table()
+
+#     server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#     server_own_socket.bind((update_server_host, update_server_port))
+#     server_own_socket.listen(5)
+#     print(f"Own Server listening on {update_server_host}:{update_server_port}...")
+
+#     while True:
+#         client_socket, client_address = server_own_socket.accept()
+#         print(f"Connection from {client_address}")
+
+#         # Receive SQL message
+#         data = client_socket.recv(1024).decode()
+#         print(f"Received SQL message: {data}")
+
+#         if client_address == replica_server_host and data == "Switch Role":
+#             response = "Ok, let's switch role"
+#             client_socket.send(response.encode())
+#             client_socket.close()
+#             server_own_socket.close()
+#             switch_role()
+
+#         # Process the SQL message
+#         response = process_sql_message(data)
+#         client_socket.send(response.encode())
+#         print(f"Sent response: {response}")
+
+#         client_socket.close()
+
 def start_server():
-    """Start Server C to listen for client connections and process SQL messages."""
+
     create_database_if_not_exists()
     create_table()
 
-    server_own_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_own_socket.bind((update_server_host, update_server_port))
-    server_own_socket.listen(5)
-    print(f"Own Server listening on {update_server_host}:{update_server_port}...")
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setblocking(False)
+    server_socket.bind((update_server_host if is_update_server else replica_server_host, 
+                        update_server_port if is_update_server else replica_server_port))
+    server_socket.listen(5)
+    print(f"Server listening on {server_socket.getsockname()}")
 
-    while True:
-        client_socket, client_address = server_own_socket.accept()
-        print(f"Connection from {client_address}")
+    poller = select.poll()
+    poller.register(server_socket, select.POLLIN)
+    fd_to_socket = {server_socket.fileno(): server_socket}
 
-        # Receive SQL message
-        data = client_socket.recv(1024).decode()
-        print(f"Received SQL message: {data}")
+    try:
+        while True:
+            events = poller.poll()
+            for fd, event in events:
+                sock = fd_to_socket[fd]
+                if sock is server_socket:
+      
+                    client_socket, addr = server_socket.accept()
+                    print(f"New connection from {addr}")
+                    client_socket.setblocking(False)
+                    poller.register(client_socket, select.POLLIN)
+                    fd_to_socket[client_socket.fileno()] = client_socket
+                elif event & select.POLLIN:
+   
+                    handle_client_request(sock, poller, fd_to_socket)
+    except KeyboardInterrupt:
+        print("Shutting down server.")
+    finally:
+        server_socket.close()
 
-        if client_address == replica_server_host and data == "Switch Role":
-            response = "Ok, let's switch role"
-            client_socket.send(response.encode())
-            client_socket.close()
-            server_own_socket.close()
-            switch_role()
+def handle_client_request(sock, poller, fd_to_socket):
+    try:
+        data = sock.recv(1024).decode()
+        if not data:
+            raise ConnectionResetError("Client disconnected")
+        print(f"Received SQL: {data}")
 
-        # Process the SQL message
+        client_ip, client_port = sock.getpeername()
+        print(f"Request from IP: {client_ip}, Port: {client_port}")
+
         response = process_sql_message(data)
-        client_socket.send(response.encode())
-        print(f"Sent response: {response}")
 
-        client_socket.close()
+        if client_ip == update_server_host:
+            print(f"Request from main server ({client_ip}), performing sync...")
+            sync_status = sync_with_server_b(data)
+            response += f" | Sync: {sync_status}"
+        else:
+            print(f"Request from other client ({client_ip}), no sync needed.")
+
+        sock.send(response.encode())
+    except Exception as e:
+        print(f"Error handling client request: {e}")
+    finally:
+        poller.unregister(sock)
+        sock.close()
+        del fd_to_socket[sock.fileno()]
 
 
 def start_replica():
@@ -387,8 +451,9 @@ def switch_role():
 # --- Main Execution ---
 
 if __name__ == "__main__":
-    if is_update_server:
-        start_server()
-    else:
-        start_replica()
+    # if is_update_server:
+    #     start_server()
+    # else:
+    #     start_replica()
+    start_server()
     
