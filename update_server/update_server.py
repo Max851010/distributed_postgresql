@@ -356,7 +356,7 @@ def handle_client_request(sock, poller, fd_to_socket):
 
         response = process_sql_message(data)
 
-        if client_ip == update_server_host:
+        if client_ip == HOST_MAIN_SERVER:
             print(f"Request from main server ({client_ip}), performing sync...")
             sync_status = sync_with_server_b(data)
             response += f" | Sync: {sync_status}"
