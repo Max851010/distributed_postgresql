@@ -11,12 +11,12 @@ HOST_MASTER = '0.0.0.0'
 PORT_MASTER = 8001
 
 # Server Sharding 1 and Server Sharding 2 config
-HOST_SHARDING1 = '192.168.12.47'
+HOST_SHARDING1 = '192.168.12.154'
 PORT_SHARDING1 = 12347
-HOST_SHARDING2 = 'localhost'
-PORT_SHARDING2 = 65434
+HOST_SHARDING2 = '192.168.12.154'
+PORT_SHARDING2 = 12347
 
-HOST_REPLICA1 = '192.168.12.47'
+HOST_REPLICA1 = '192.168.12.224'
 PORT_REPLICA1 = 12347
 HOST_REPLICA2 = 'localhost'
 PORT_REPLICA2 = 65434
@@ -80,7 +80,10 @@ def get_shard(state_abbreviation):
 
 def check_node_health_and_send_query(sharding_id, query, query_type):
     node_pair = NODE_PAIRS[sharding_id]
-    main_node = node_pair[node_pair['main']]
+    if query_type == "SELECT":
+        main_node = node_pair[node_pair['main'] ^ 1]
+    else:
+        main_node = node_pair[node_pair['main']]
     print(
         f"[Master Server] Sending {query_type} query to Sharding {sharding_id}, with main node {main_node['host']}:{main_node['port']}"
     )
@@ -92,9 +95,9 @@ def check_node_health_and_send_query(sharding_id, query, query_type):
                 f"[Master Server] Connected to Sharding {sharding_id} with main node {main_node['host']}:{main_node['port']}"
             )
             sharding_socket.sendall(query.encode('utf-8'))
-            response = sharding_socket.recv(1024)
+            response = sharding_socket.recv(1024).decode('utf-8')
             print(
-                f"[Master Server] Received response from Sharding {sharding_id}: {response.decode('utf-8')}"
+                f"[Master Server] Received response from Sharding {sharding_id}: {response}"
             )  # Troubleshooting print
 
             return response
@@ -105,6 +108,30 @@ def check_node_health_and_send_query(sharding_id, query, query_type):
         print(f"[Master Server] Switching main node for Sharding {sharding_id}")
 
         node_pair['main'] ^= 1
+        main_node = node_pair[node_pair['main']]
+        try:
+            with socket.socket(socket.AF_INET,
+                               socket.SOCK_STREAM) as sharding_socket:
+                sharding_socket.connect((main_node['host'], main_node['port']))
+                print(
+                    f"[Master Server] Connected to Sharding {sharding_id} with main node {main_node['host']}:{main_node['port']}"
+                )
+                sharding_socket.sendall(query.encode('utf-8'))
+                response = sharding_socket.recv(1024).decode('utf-8')
+                print(
+                    f"[Master Server] Received response from Sharding {sharding_id}: {response}"
+                )  # Troubleshooting print
+
+                return response
+        except Exception as e:
+            print(
+                f"[Master Server] Error connecting to Sharding {sharding_id}: {e}"
+            )
+
+            print(
+                f"[Master Server] Switching main node for Sharding {sharding_id}"
+            )
+            return "FAILED"
 
         return "FAILED"
 
@@ -188,13 +215,49 @@ def parse_insert_query(query):
     if state_index is None:
         raise ValueError(
             "'state' column (case-insensitive) is required for sharding.")
+    # Parse values clause into rows
+    rows = [row.strip().strip("()") for row in values.split("), (")]
 
-    state_value = values_list[state_index]
+    # Initialize shard-specific data
+    values_shard_0 = []
+    values_shard_1 = []
 
-    # Determine shard ID
-    sharding_id = get_shard(state_value)
+    # Process each row and allocate to the appropriate shard
+    for row in rows:
+        # Split the row by commas and process each value
+        values_list = [
+            # Handle 'NULL' by converting to None
+            None if val.strip() == "NULL" else
+            # If it's a number, convert it to an integer or float
+            (int(val.strip()) if val.strip().isdigit() else
+             (float(val.strip())
+              if '.' in val.strip() else val.strip().strip("'").strip("\"")))
+            for val in row.split(",")
+        ]
 
-    return table_name, columns, values, sharding_id
+        # Extract the state value (assuming you know the index of 'state' column)
+        state_value = values_list[state_index]
+
+        # Determine the shard ID based on the state value
+        sharding_id = get_shard(state_value)
+
+        # Append the values to the appropriate shard
+        if sharding_id == 0:
+            values_shard_0.append(values_list)
+        elif sharding_id == 1:
+            values_shard_1.append(values_list)
+        else:
+            raise ValueError(f"Invalid sharding ID: {sharding_id}")
+
+    columns_list = "(" + ", ".join(columns_list) + ")"
+    values_shard_0 = ", ".join(
+        f"({', '.join(repr(value) if isinstance(value, str) else str(value) for value in record)})"
+        for record in values_shard_0)
+    values_shard_1 = ", ".join(
+        f"({', '.join(repr(value) if isinstance(value, str) else str(value) for value in record)})"
+        for record in values_shard_1)
+
+    return table_name, columns_list, values_shard_0, values_shard_1
 
 
 def parse_create_query(query):
@@ -266,7 +329,7 @@ def handle_request(client_socket):
                     )
                 else:
                     final_response += response
-            client_socket.sendall(final_response)
+            client_socket.sendall(final_response.encode('utf-8'))
     elif query.startswith("INSERT"):
         print("[Master Server] Handling INSERT query")
         print("[Master Server] Forwarding query to Sharding Servers"
@@ -274,19 +337,21 @@ def handle_request(client_socket):
         # Example: Parsing the INSERT query to extract table name and values
         # Assumes the query is in the form: "INSERT INTO table_name (col1, col2, ...) VALUES (val1, val2, ...)"
 
-        table_name, columns, query_values, sharding_id = parse_insert_query(
+        table_name, columns_list, values_shard_0, values_shard_1 = parse_insert_query(
             query)
-        updated_query = f"INSERT INTO {table_name} {columns} VALUES {query_values}"
-        print(
-            f"[Master Server] Forwarding query to {'sharding 1' if sharding_id == 0 else 'sharding 2'} Server: {updated_query}"
-        )
-
         response = ""
 
-        for _ in range(2):
-            response = check_node_health_and_send_query(sharding_id, query,
-                                                        "INSERT")
-            response = response.decode('utf-8')
+        for i in range(2):
+            if i == 0 and values_shard_0 != "":
+                updated_query = f"INSERT INTO {table_name} {columns_list} VALUES {values_shard_0};"
+            elif i == 1 and values_shard_1 != "":
+                updated_query = f"INSERT INTO {table_name} {columns_list} VALUES {values_shard_1};"
+            print(
+                f"[Master Server] Forwarding query to Sharding {i} Server: {updated_query}"
+            )
+
+            response += check_node_health_and_send_query(
+                i, updated_query, "INSERT") + "\n"
             if "FAILED" not in response:
                 client_socket.sendall(response.encode('utf-8'))
                 break
@@ -304,14 +369,9 @@ def handle_request(client_socket):
 
             # Reconstruct the CREATE TABLE query for consistency
             formatted_query = f"CREATE TABLE {table_name} {columns_definition}"
-            for sharding_id in range(2):
-                response = ""
-
-                for _ in range(2):
-                    response = check_node_health_and_send_query(
-                        sharding_id, query, "CREATE")
-                    if "FAILED" not in response:
-                        break
+            for sharding_id in range(1):
+                response = check_node_health_and_send_query(
+                    sharding_id, query, "CREATE")
 
                 if "FAILED" in response:
                     print(
