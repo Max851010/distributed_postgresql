@@ -77,16 +77,19 @@ def get_shard(state_abbreviation):
     hash_value = hashlib.md5(state_abbreviation.encode()).hexdigest()
     return int(hash_value, 16) % 2  # Modulo 2 for two shards
 
+
 def check_node_health_and_send_query(sharding_id, query, query_type):
     node_pair = NODE_PAIRS[sharding_id]
     main_node = node_pair[node_pair['main']]
+    print(
+        f"[Master Server] Sending {query_type} query to Sharding {sharding_id}, with main node {main_node['host']}:{main_node['port']}"
+    )
     try:
         with socket.socket(socket.AF_INET,
-                            socket.SOCK_STREAM) as sharding_socket:
-            sharding_socket.connect(
-                (main_node['host'], main_node['port']))
+                           socket.SOCK_STREAM) as sharding_socket:
+            sharding_socket.connect((main_node['host'], main_node['port']))
             print(
-                f"[Master Server] Sending {query_type} query to Sharding {sharding_id}"
+                f"[Master Server] Connected to Sharding {sharding_id} with main node {main_node['host']}:{main_node['port']}"
             )
             sharding_socket.sendall(query.encode('utf-8'))
             response = sharding_socket.recv(1024)
@@ -97,16 +100,14 @@ def check_node_health_and_send_query(sharding_id, query, query_type):
             return response
     except Exception as e:
         print(
-            f"[Master Server] Error connecting to Sharding {sharding_id}: {e}"
-        )
+            f"[Master Server] Error connecting to Sharding {sharding_id}: {e}")
 
-        print(
-            f"[Master Server] Switching main node for Sharding {sharding_id}"
-        )
+        print(f"[Master Server] Switching main node for Sharding {sharding_id}")
 
         node_pair['main'] ^= 1
 
         return "FAILED"
+
 
 def parse_select_query(query):
     """Parse a SELECT SQL query using sqlparse."""
@@ -236,11 +237,12 @@ def handle_request(client_socket):
             response = ""
 
             for _ in range(2):
-                response = check_node_health_and_send_query(sharding_id, query, "SELECT")
+                response = check_node_health_and_send_query(
+                    sharding_id, query, "SELECT")
                 if "FAILED" not in response:
                     client_socket.sendall(response)
                     break
-                
+
             if "FAILED" in response:
                 print(
                     f"[Master Server] Failed to send SELECT query to Sharding {sharding_id}, both nodes are down"
@@ -253,10 +255,11 @@ def handle_request(client_socket):
                 response = ""
 
                 for _ in range(2):
-                    response = check_node_health_and_send_query(i, query, "SELECT")
+                    response = check_node_health_and_send_query(
+                        i, query, "SELECT")
                     if "FAILED" not in response:
                         break
-                    
+
                 if "FAILED" in response:
                     print(
                         f"[Master Server] Failed to send SELECT query to Sharding {sharding_id}, both nodes are down"
@@ -273,8 +276,6 @@ def handle_request(client_socket):
 
         table_name, columns, query_values, sharding_id = parse_insert_query(
             query)
-        record_id = get_next_id(table_name)
-        query_values = query_values.replace("(", f"({next_id},", 1)
         updated_query = f"INSERT INTO {table_name} {columns} VALUES {query_values}"
         print(
             f"[Master Server] Forwarding query to {'sharding 1' if sharding_id == 0 else 'sharding 2'} Server: {updated_query}"
@@ -283,11 +284,13 @@ def handle_request(client_socket):
         response = ""
 
         for _ in range(2):
-            response = check_node_health_and_send_query(sharding_id, query, "INSERT")
+            response = check_node_health_and_send_query(sharding_id, query,
+                                                        "INSERT")
+            response = response.decode('utf-8')
             if "FAILED" not in response:
-                client_socket.sendall(response)
+                client_socket.sendall(response.encode('utf-8'))
                 break
-            
+
         if "FAILED" in response:
             print(
                 f"[Master Server] Failed to send INSERT query to Sharding {sharding_id}, both nodes are down"
@@ -305,10 +308,11 @@ def handle_request(client_socket):
                 response = ""
 
                 for _ in range(2):
-                    response = check_node_health_and_send_query(sharding_id, query, "CREATE")
+                    response = check_node_health_and_send_query(
+                        sharding_id, query, "CREATE")
                     if "FAILED" not in response:
                         break
-                    
+
                 if "FAILED" in response:
                     print(
                         f"[Master Server] Failed to send CREATE query to Sharding {sharding_id}, both nodes are down"
@@ -330,6 +334,7 @@ def handle_sigint(signum, frame):
     if server_socket:
         print("[Master Server] Closing server socket and releasing port...")
         server_socket.close()  # Close the server socket to release the port
+
 
 def run_server():
     global shutdown_flag
