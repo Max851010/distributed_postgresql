@@ -108,3 +108,16 @@ jobs:
           docker rm update-server-container || true
         "
     # docker run -p 8002:8002 chengyentsai851010/update_server
+
+    # Step 7: Deploy Update Server to GCE update_node1
+    - name: Deploy Update Server
+      uses: webfactory/ssh-agent@v0.7.0
+      with:
+        ssh-private-key: ${{ secrets.GCE_SSH_KEY }}
+    - name: SSH and Deploy Update Server
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.UPDATE_NODE1_IP }} "
+          docker pull chengyentsai851010/update_server &&
+          docker stop update-server-container || true &&
+          docker rm update-server-container || true
+        "
