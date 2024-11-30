@@ -42,6 +42,7 @@ update_server_port = PORT_OWN_SERVER
 replica_server_host = HOST_ANOTHER_SERVER
 replica_server_port = PORT_ANOTHER_SERVER
 
+replica_node_status = "RUNNING"
 
 # --- Database Functions ---
 
@@ -156,28 +157,25 @@ def write_log_to_file(sql_message, file):
 # --- Replica Sync Functions ---
 
 def check_replica_node_status():
-    global replica_node_status
-
     while True:
         try:
             replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             replica_socket.connect((HOST_ANOTHER_SERVER, PORT_ANOTHER_SERVER))
+            replica_socket.send("TEST".encode())
 
             # Wait for acknowledgment
             acknowledgment = replica_socket.recv(1024).decode()
             replica_socket.close()
-            print(f"Received acknowledgment from Server B: {acknowledgment}")
-            print("Connected to Server B")
+            print(f"Reconnected to Server B and received acknowledgment from Server B: {acknowledgment}")
 
             break
         except Exception as error:
             print(f"Failed to sync with Server B: {error}")
-        finally:
             time.sleep(5)
 
     
 def sync_missing_queries():
-    global missing_queries, replica_node_status
+    global missing_queries
 
     while missing_queries:
         sql_message = missing_queries[0]
@@ -195,35 +193,52 @@ def sync_missing_queries():
 
             # Remove the query from the queue
             missing_queries.popleft()
-            print(f"Received acknowledgment from Server B: {acknowledgment}")
+            print(f"Received resync acknowledgment from Server B: {acknowledgment}")
         except Exception as error:
             print(f"Failed to resync with Server B: {error}")
-            replica_node_status = "DOWN"
-            check_replica_node_status()
+            break
 
 def manage_missing_queries():
     global missing_queries, replica_node_status
 
-    # Check the status of the replica node
-    check_replica_node_status()
+    while replica_node_status == "DOWN":
+        # Check the replica_node_status of the replica node
+        check_replica_node_status()
 
-    missing_queries = deque([])
+        missing_queries = deque([])
 
-    with open(LOG_DIFF_FILE, "r") as log_file:
-        lines = log_file.readlines()
-        for line in lines:
-            missing_queries.append(line.strip())
+        with open(LOG_DIFF_FILE, "r") as log_file:
+            lines = log_file.readlines()
+            for line in lines:
+                missing_queries.append(line.strip())
 
-    replica_node_status = "RECOVERING"
+        replica_node_status = "RECOVERING"
 
-    # resync missing queries with server B
-    sync_missing_queries()
-    replica_node_status = "RUNNING"
+        # resync missing queries with server B
+        sync_missing_queries()
+
+        # rewrite the log diff file
+        try:
+            with open(LOG_DIFF_FILE, "w") as log_file:
+                for sql_message in missing_queries:
+                    log_file.write(sql_message + "\n")
+            print("SQL operation diff logged successfully.")
+        except Exception as error:
+            print(f"Failed to write to log file: {error}")
+
+        # check if all queries are synced
+        if not missing_queries:
+            replica_node_status = "RUNNING"
+            print("All missing queries synced with Server B.")
+        else:
+            replica_node_status = "DOWN"
+
+        missing_queries.clear()
 
 
 def sync_with_replica_server(sql_message):
     """Send the SQL message to replica server B and wait for acknowledgment."""
-    global missing_queries, replica_node_status, missing_query_manager
+    global missing_queries, replica_node_status
 
     if replica_node_status == "DOWN":
         write_log_to_file(sql_message, LOG_DIFF_FILE)
@@ -244,8 +259,7 @@ def sync_with_replica_server(sql_message):
             replica_socket.close()
             print(f"Received acknowledgment from Server B: {acknowledgment}")
             replica_node_status = "RUNNING"
-            if missing_query_manager and missing_query_manager.is_alive():
-                missing_query_manager.join()
+
             return acknowledgment
         except Exception as error:
             replica_node_status = "DOWN"
@@ -385,7 +399,7 @@ def handle_client_request(sock):
         if not data:
             raise ConnectionResetError("Client disconnected")
         
-        if data.startswith("Fail") or data.startswith("Ack"):
+        if data.startswith("Fail") or data.startswith("Ack") or data.startswith("TEST"):
             print(f"Received Message: {data}")
             sock.send(data.encode()) 
         else:
