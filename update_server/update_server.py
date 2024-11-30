@@ -1,3 +1,4 @@
+update_server/update_server.py
 import socket
 import psycopg2
 from psycopg2 import sql
@@ -12,24 +13,27 @@ HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
 PORT_OWN_SERVER = 12347  # Port to listen on
 
 # Replica Server details (replica server)
-HOST_ANOTHER_SERVER = 'localhost'  # Change to Server B's address
-PORT_ANOTHER_SERVER = 12348  # Change to Server B's port
+HOST_ANOTHER_SERVER = '192.168.12.224'  # Change to Server B's address
+PORT_ANOTHER_SERVER = 12347  # Change to Server B's port
 
 # Main Server details
-HOST_MAIN_SERVER = '...'
-PORT_MAIN_SERVER = '...'
+HOST_MAIN_SERVER = '192.168.12.140'
+PORT_MAIN_SERVER = 8001
 
 # Global variables
 shutdown_flag = False
 server_socket = None
+replica_node_status = "RUNNING"
+missing_queries = deque([])
+missing_query_manager = None
 
 # PostgreSQL connection details
-DB_NAME = "AutonomousDB"
+DB_NAME = "autonomous_car_database_0"
 DB_USER = "kenyang"
 DB_PASSWORD = "ken890404"
 DB_HOST = "localhost"
 DB_PORT = "8888"
-TABLE_NAME = "test1_table"
+# TABLE_NAME = "test1_table"
 
 # Log file name
 LOG_FILE = "sql_log.txt"
@@ -78,6 +82,35 @@ def create_database_if_not_exists():
             print(f"Database '{DB_NAME}' already exists.")
     except Exception as error:
         print(f"Failed to create database: {error}")
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
+
+
+def delete_database(database_name):
+    """
+    Drops the specified database if it exists.
+    """
+    try:
+        # Connect to the default database (usually "postgres")
+        connection = psycopg2.connect(
+            user=DB_USER,
+            password=DB_PASSWORD,
+            host=DB_HOST,
+            port=DB_PORT,
+            dbname=
+            "postgres"  # Connect to a database other than the one you want to drop
+        )
+        connection.autocommit = True  # Enable auto-commit for DROP DATABASE
+        cursor = connection.cursor()
+
+        # Check if the database exists and drop it
+        drop_query = f"DROP DATABASE IF EXISTS {database_name};"
+        cursor.execute(drop_query)
+        print(f"Database '{database_name}' has been dropped (if it existed).")
+    except Exception as e:
+        print(f"Error dropping database '{database_name}': {e}")
     finally:
         if connection:
             cursor.close()
@@ -212,7 +245,7 @@ def manage_missing_queries():
     # Check the status of the replica node
     check_replica_node_status()
 
-    missing_queries = deque([])
+    # missing_queries = deque([])
 
     with open(LOG_DIFF_FILE, "r") as log_file:
         lines = log_file.readlines()
@@ -336,7 +369,6 @@ def handle_sigint(signum, frame):
 def start_server():
 
     create_database_if_not_exists()
-    create_table()
     global shutdown_flag
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setblocking(False)
@@ -422,6 +454,7 @@ def handle_client_request(sock):
                     f"Request from other client ({client_ip}), no sync needed.")
 
             # Send the response back to the requesting client
+            print("\n====================================\n")
             sock.send(response.encode())
     except Exception as e:
         print(f"Error handling client request: {e}")
