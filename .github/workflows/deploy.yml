@@ -103,8 +103,7 @@ jobs:
     - name: SSH and Deploy Update Server 0
       run: |
         ssh -o StrictHostKeyChecking=no ${{ secrets.GCE_USER }}@${{ secrets.UPDATE_NODE0_IP }} "
-          docker pull chengyentsai851010/update_server &&
-          docker stop update-server-container || true
+          docker pull chengyentsai851010/update_server
         "
     # docker run -p 8002:8002 chengyentsai851010/update_server
 
