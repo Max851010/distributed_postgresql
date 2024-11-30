@@ -9,11 +9,11 @@ import signal
 
 # Update Server details
 HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
-PORT_OWN_SERVER = 12347      # Port to listen on
+PORT_OWN_SERVER = 12347  # Port to listen on
 
 # Replica Server details (replica server)
 HOST_ANOTHER_SERVER = 'localhost'  # Change to Server B's address
-PORT_ANOTHER_SERVER = 12348        # Change to Server B's port
+PORT_ANOTHER_SERVER = 12348  # Change to Server B's port
 
 # Main Server details
 HOST_MAIN_SERVER = '...'
@@ -42,19 +42,17 @@ update_server_port = PORT_OWN_SERVER
 replica_server_host = HOST_ANOTHER_SERVER
 replica_server_port = PORT_ANOTHER_SERVER
 
-
 # --- Database Functions ---
+
 
 def connect_postgres(dbname="postgres"):
     """Connect to PostgreSQL using psycopg2 with the specified database."""
     try:
-        connection = psycopg2.connect(
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            dbname=dbname,
-            port=DB_PORT
-        )
+        connection = psycopg2.connect(user=DB_USER,
+                                      password=DB_PASSWORD,
+                                      host=DB_HOST,
+                                      dbname=dbname,
+                                      port=DB_PORT)
         connection.autocommit = True
         print(f"Connected to PostgreSQL database '{dbname}'.")
         return connection
@@ -71,7 +69,8 @@ def create_database_if_not_exists():
 
     try:
         cursor = connection.cursor()
-        cursor.execute(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}';")
+        cursor.execute(
+            f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}';")
         if not cursor.fetchone():
             cursor.execute(f"CREATE DATABASE {DB_NAME};")
             print(f"Database '{DB_NAME}' created successfully.")
@@ -106,7 +105,9 @@ def create_table():
             cursor.close()
             conn.close()
 
+
 # --- Read Log File ---
+
 
 def get_queries():
     """Reads queries from log.txt and returns them as a list."""
@@ -117,11 +118,12 @@ def get_queries():
     except FileNotFoundError:
         return []
 
+
 def execute_sql_message(sql_message):
     """Execute the SQL message in the database."""
     try:
         # Connect to the specified PostgreSQL database
-        conn = connect_postgres(DB_NAME)  
+        conn = connect_postgres(DB_NAME)
         cursor = conn.cursor()
 
         # Execute the provided SQL command
@@ -143,6 +145,7 @@ def execute_sql_message(sql_message):
 
 # --- Logging Functions ---
 
+
 def write_log_to_file(sql_message, file):
     """Write the SQL operation to the log file."""
     try:
@@ -154,6 +157,7 @@ def write_log_to_file(sql_message, file):
 
 
 # --- Replica Sync Functions ---
+
 
 def check_replica_node_status():
     global replica_node_status
@@ -175,7 +179,7 @@ def check_replica_node_status():
         finally:
             time.sleep(5)
 
-    
+
 def sync_missing_queries():
     global missing_queries, replica_node_status
 
@@ -200,6 +204,7 @@ def sync_missing_queries():
             print(f"Failed to resync with Server B: {error}")
             replica_node_status = "DOWN"
             check_replica_node_status()
+
 
 def manage_missing_queries():
     global missing_queries, replica_node_status
@@ -251,7 +256,8 @@ def sync_with_replica_server(sql_message):
             replica_node_status = "DOWN"
             write_log_to_file(sql_message, LOG_DIFF_FILE)
 
-            missing_query_manager = threading.Thread(target=manage_missing_queries)
+            missing_query_manager = threading.Thread(
+                target=manage_missing_queries)
             missing_query_manager.start()
 
             print(f"Failed to sync with Server B: {error}")
@@ -259,6 +265,7 @@ def sync_with_replica_server(sql_message):
 
 
 # --- SQL Message Processing ---
+
 
 def process_sql_message(sql_message):
     """
@@ -271,7 +278,7 @@ def process_sql_message(sql_message):
 
     # Step 1: Execute in local database
     response = execute_sql_message(sql_message)
-    
+
     if not response.startswith("Fail"):
         # Step 2: Write to log file
         write_log_to_file(sql_message, LOG_FILE)
@@ -316,6 +323,7 @@ def process_sql_message(sql_message):
 
 #         client_socket.close()
 
+
 def handle_sigint(signum, frame):
     global shutdown_flag, server_socket
     print("Received SIGINT. Shutting down...")
@@ -324,8 +332,9 @@ def handle_sigint(signum, frame):
         print("Closing server socket and releasing port...")
         server_socket.close()
 
+
 def start_server():
-    
+
     create_database_if_not_exists()
     create_table()
     global shutdown_flag
@@ -354,7 +363,8 @@ def start_server():
                 elif event == select.POLLIN:
 
                     print("Ready to handle client request")
-                    client_socket = socket.fromfd(fileno, socket.AF_INET, socket.SOCK_STREAM)
+                    client_socket = socket.fromfd(fileno, socket.AF_INET,
+                                                  socket.SOCK_STREAM)
                     handle_client_request(client_socket)
 
                     # Safe unregistration and cleanup
@@ -370,6 +380,7 @@ def start_server():
     finally:
         server_socket.close()
 
+
 def handle_client_request(sock):
     """
     Handle a single client request:
@@ -384,10 +395,10 @@ def handle_client_request(sock):
         print(data)
         if not data:
             raise ConnectionResetError("Client disconnected")
-        
+
         if data.startswith("Fail") or data.startswith("Ack"):
             print(f"Received Message: {data}")
-            sock.send(data.encode()) 
+            sock.send(data.encode())
         else:
             print(f"Received Query: {data}")
 
@@ -400,12 +411,15 @@ def handle_client_request(sock):
 
             # Check if the request is from the main server
             if client_ip == HOST_MAIN_SERVER:
-                print(f"Request from main server ({client_ip}), performing sync...")
+                print(
+                    f"Request from main server ({client_ip}), performing sync..."
+                )
                 # Sync with the replica server and include sync status in the response
                 sync_status = sync_with_replica_server(data)
                 response += f" | Sync: {sync_status}"
             else:
-                print(f"Request from other client ({client_ip}), no sync needed.")
+                print(
+                    f"Request from other client ({client_ip}), no sync needed.")
 
             # Send the response back to the requesting client
             sock.send(response.encode())
@@ -417,7 +431,6 @@ def handle_client_request(sock):
     finally:
         # Always close the socket after handling the request
         sock.close()
-
 
 
 # def start_replica():
@@ -465,11 +478,11 @@ def handle_client_request(sock):
 #             try:
 #                 client_socket.connect((update_server_host, update_server_port))
 #                 print(f"Successcully Connect to {update_server_port}:{update_server_port}")
-                
+
 #                 message = "Switch Role"
 #                 client_socket.sendall(message.encode())
 #                 print(f"Send Message to Update Server: {message}")
-               
+
 #                 response = client_socket.recv(1024).decode()
 #                 print(f"Receive Response frome Update Server: {response}")
 
@@ -480,21 +493,18 @@ def handle_client_request(sock):
 #                 client_socket.close()
 #                 server_own_socket.close()
 #                 switch_role()
-        
-
 
 # --- Switch role between update server and replica ---
 # def switch_role():
 #     update_server_host, replica_server_host = replica_server_host, update_server_host
 #     update_server_port, replica_server_port = replica_server_port, update_server_port
-    
+
 #     if is_update_server:
 #         is_update_server = False
 #         start_replica()
 #     else:
 #         is_update_server = True
 #         start_server()
-
 
 # --- Main Execution ---
 
@@ -504,4 +514,3 @@ if __name__ == "__main__":
     # else:
     #     start_replica()
     start_server()
-    
