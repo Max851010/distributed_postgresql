@@ -1,4 +1,3 @@
-update_server/update_server.py
 import socket
 import psycopg2
 from psycopg2 import sql
@@ -18,7 +17,7 @@ PORT_ANOTHER_SERVER = 12347  # Change to Server B's port
 
 # Main Server details
 HOST_MAIN_SERVER = '192.168.12.140'
-PORT_MAIN_SERVER = 8001
+PORT_MAIN_SERVER = 12347
 
 # Global variables
 shutdown_flag = False
@@ -202,7 +201,9 @@ def check_replica_node_status():
             # Wait for acknowledgment
             acknowledgment = replica_socket.recv(1024).decode()
             replica_socket.close()
-            print(f"Reconnected to Server B and received acknowledgment from Server B: {acknowledgment}")
+            print(
+                f"Reconnected to Server B and received acknowledgment from Server B: {acknowledgment}"
+            )
 
             break
         except Exception as error:
@@ -229,10 +230,13 @@ def sync_missing_queries():
 
             # Remove the query from the queue
             missing_queries.popleft()
-            print(f"Received resync acknowledgment from Server B: {acknowledgment}")
+            print(
+                f"Received resync acknowledgment from Server B: {acknowledgment}"
+            )
         except Exception as error:
             print(f"Failed to resync with Server B: {error}")
             break
+
 
 def manage_missing_queries():
     global missing_queries, replica_node_status
@@ -437,7 +441,8 @@ def handle_client_request(sock):
         if not data:
             raise ConnectionResetError("Client disconnected")
 
-        if data.startswith("Fail") or data.startswith("Ack") or data.startswith("TEST"):
+        if data.startswith("Fail") or data.startswith("Ack") or data.startswith(
+                "TEST"):
             print(f"Received Message: {data}")
             sock.send(data.encode())
         else:

@@ -3,8 +3,8 @@ import os
 from pprint import pprint
 
 # Master Server details
-HOST_MASTER = '192.168.12.140'  # Replace with Master Server's IP address
-PORT_MASTER = 8001
+HOST_MASTER = '10.128.0.2'  # Replace with Master Server's IP address
+PORT_MASTER = 12347
 print(f"Connecting to Master Server {HOST_MASTER}:{PORT_MASTER}")
 
 # Create Client A
