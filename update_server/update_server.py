@@ -1,4 +1,4 @@
-update_server/update_server.py
+
 import socket
 import psycopg2
 from psycopg2 import sql
@@ -13,11 +13,11 @@ HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
 PORT_OWN_SERVER = 12347  # Port to listen on
 
 # Replica Server details (replica server)
-HOST_ANOTHER_SERVER = '192.168.12.224'  # Change to Server B's address
-PORT_ANOTHER_SERVER = 12347  # Change to Server B's port
+HOST_ANOTHER_SERVER = ''  # Change to Server B's address
+PORT_ANOTHER_SERVER = 7777  # Change to Server B's port
 
 # Main Server details
-HOST_MAIN_SERVER = '192.168.12.140'
+HOST_MAIN_SERVER = '10.159.203.194'
 PORT_MAIN_SERVER = 8001
 
 # Global variables
