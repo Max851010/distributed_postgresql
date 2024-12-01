@@ -6,17 +6,18 @@ import threading
 import time
 import select
 import signal
+import json
 
 # Update Server details
 HOST_OWN_SERVER = '0.0.0.0'  # Bind to all interfaces
-PORT_OWN_SERVER = 12347  # Port to listen on
+PORT_OWN_SERVER = 22222  # Port to listen on
 
 # Replica Server details (replica server)
-HOST_ANOTHER_SERVER = ''  # Change to Server B's address
-PORT_ANOTHER_SERVER = 7777  # Change to Server B's port
+HOST_ANOTHER_SERVER = '192.168.12.154'  # Change to Server B's address
+PORT_ANOTHER_SERVER = 11111  # Change to Server B's port
 
 # Main Server details
-HOST_MAIN_SERVER = '10.128.0.2'
+HOST_MAIN_SERVER = '192.168.12.140'
 PORT_MAIN_SERVER = 12347
 
 # Global variables
@@ -27,7 +28,7 @@ missing_queries = deque([])
 missing_query_manager = None
 
 # PostgreSQL connection details
-DB_NAME = "autonomous_car_database_0"
+DB_NAME = "autonomous_car_database_1"
 DB_USER = "kenyang"
 DB_PASSWORD = "ken890404"
 DB_HOST = "localhost"
@@ -160,10 +161,13 @@ def execute_sql_message(sql_message):
 
         # Execute the provided SQL command
         cursor.execute(sql_message)
+        res = cursor.fetchall()
         conn.commit()
-
+        res_string = json.dumps([dict(zip([desc[0] for desc in cursor.description], row)) for row in res], indent=2)
         # If execution is successful, return success message with the SQL command
-        return f"Ack: {sql_message}"
+        if not sql_message.startswith("SELECT"):
+            return f"Ack: {sql_message}"
+        return res_string
     except Exception as error:
         print(f"Error executing SQL: {error}")
         # If execution fails, return failure message with the SQL command
@@ -192,7 +196,7 @@ def write_log_to_file(sql_message, file):
 
 
 def check_replica_node_status():
-    while True:
+    while not shutdown_flag:
         try:
             replica_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             replica_socket.connect((HOST_ANOTHER_SERVER, PORT_ANOTHER_SERVER))
@@ -437,12 +441,12 @@ def handle_client_request(sock):
     try:
         # Receive data from the client
         data = sock.recv(1024).decode()
-        print(data)
+        print(type(data))
         if not data:
             raise ConnectionResetError("Client disconnected")
 
-        if data.startswith("Fail") or data.startswith("Ack") or data.startswith(
-                "TEST"):
+        if data.startswith("Fail") or data.startswith(
+                "Ack") or data.startswith("TEST"):
             print(f"Received Message: {data}")
             sock.send(data.encode())
         else:
@@ -456,7 +460,7 @@ def handle_client_request(sock):
             response = process_sql_message(data)
 
             # Check if the request is from the main server
-            if client_ip == HOST_MAIN_SERVER:
+            if client_ip == HOST_MAIN_SERVER and not data.startswith("SELECT"):
                 print(
                     f"Request from main server ({client_ip}), performing sync..."
                 )
@@ -465,7 +469,8 @@ def handle_client_request(sock):
                 response += f" | Sync: {sync_status}"
             else:
                 print(
-                    f"Request from other client ({client_ip}), no sync needed.")
+                    f"Request from other client ({client_ip}), no sync needed."
+                )
 
             # Send the response back to the requesting client
             print("\n====================================\n")
