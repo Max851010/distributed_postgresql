@@ -8,18 +8,18 @@ import sqlparse
 
 # Server A config
 HOST_MASTER = '0.0.0.0'
-PORT_MASTER = 12347
+PORT_MASTER = 12346
 
 # Server Sharding 1 and Server Sharding 2 config
-HOST_SHARDING1 = '10.128.0.3'
-PORT_SHARDING1 = 12347
-HOST_SHARDING2 = '10.128.0.5'
-PORT_SHARDING2 = 12347
+HOST_SHARDING2 = '192.168.12.154'
+PORT_SHARDING2 = 11111
+HOST_SHARDING1 = '192.168.12.224'
+PORT_SHARDING1 = 11111
 
+HOST_REPLICA2 = '192.168.12.154'
+PORT_REPLICA2 = 22222
 HOST_REPLICA1 = '192.168.12.224'
-PORT_REPLICA1 = 12347
-HOST_REPLICA2 = 'localhost'
-PORT_REPLICA2 = 65434
+PORT_REPLICA1 = 22222
 
 # Flag to indicate server shutdown
 shutdown_flag = False
@@ -295,7 +295,7 @@ def handle_request(client_socket):
         table_name, columns, sharding_id, where_condition = parse_select_query(
             query)
         if sharding_id == 0 or sharding_id == 1:
-            query = f"SELECT {columns} FROM {table_name} WHERE {where_condition}"
+            query = f"SELECT {columns} FROM {table_name} {where_condition}"
 
             response = ""
 
@@ -303,7 +303,7 @@ def handle_request(client_socket):
                 response = check_node_health_and_send_query(
                     sharding_id, query, "SELECT")
                 if "FAILED" not in response:
-                    client_socket.sendall(response)
+                    client_socket.sendall(response.encode('utf-8'))
                     break
 
             if "FAILED" in response:
@@ -317,11 +317,8 @@ def handle_request(client_socket):
             for i in range(2):
                 response = ""
 
-                for _ in range(2):
-                    response = check_node_health_and_send_query(
-                        i, query, "SELECT")
-                    if "FAILED" not in response:
-                        break
+                response = check_node_health_and_send_query(i, query, "SELECT")
+                print(type(response))
 
                 if "FAILED" in response:
                     print(
@@ -354,7 +351,6 @@ def handle_request(client_socket):
                 i, updated_query, "INSERT") + "\n"
             if "FAILED" not in response:
                 client_socket.sendall(response.encode('utf-8'))
-                break
 
         if "FAILED" in response:
             print(
@@ -369,7 +365,7 @@ def handle_request(client_socket):
 
             # Reconstruct the CREATE TABLE query for consistency
             formatted_query = f"CREATE TABLE {table_name} {columns_definition}"
-            for sharding_id in range(1):
+            for sharding_id in range(2):
                 response = check_node_health_and_send_query(
                     sharding_id, query, "CREATE")
 
