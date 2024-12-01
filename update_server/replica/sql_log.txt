@@ -1,0 +1,16 @@
+CREATE TABLE test12 ( PersonID int, LastName varchar(255), FirstName varchar(255), Address varchar(255), State varchar(255), City varchar(255) );
+CREATE TABLE test13 ( PersonID int, LastName varchar(255), FirstName varchar(255), Address varchar(255), State varchar(255), City varchar(255) );
+CREATE TABLE test14 ( PersonID int, LastName varchar(255), FirstName varchar(255), Address varchar(255), State varchar(255), City varchar(255) );
+INSERT INTO test14 (PersonID, LastName, FirstName, Address, State, City) VALUES (1, 'John', 'Doe', '123 Main St', 'CA', 'New York');
+INSERT INTO test13 (PersonID, LastName, FirstName, Address, State, City) VALUES (1, 'John', 'Doe', '123 Main St', 'CA', 'New York');
+INSERT INTO test13 (PersonID, LastName, FirstName, Address, State, City) VALUES (1, 'John', 'Doe', '123 Main St', 'CA', 'New York');
+INSERT INTO test13 (PersonID, LastName, FirstName, Address, State, City) VALUES (1, 'John', 'Doe', '123 Main St', 'CA', 'New York');
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13;
+SELECT * FROM test13 WHERE State='CA';
