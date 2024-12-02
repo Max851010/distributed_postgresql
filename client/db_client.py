@@ -34,9 +34,9 @@ while True:
         client_socket.send(user_input.encode())
 
         # Receive response from Master Server
-        response = client_socket.recv(1024).decode()
+        response = client_socket.recv(2048).decode()
         print("Response from Master Server:")
-        pprint(response)
+        print(response)
 
     except KeyboardInterrupt:
         # Handle interruption (Ctrl + C) if it occurs in the input section

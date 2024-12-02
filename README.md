@@ -23,22 +23,48 @@ deactivate
 pip3 freeze > requirements.txt
 ```
 
-## Execution
+## Execution locally
 
-1. Client Node
-
-```bash
-docker run -it -p 8000:8000 chengyentsai851010/client
-```
-
-2. Master Node
+1. Download the repository
 
 ```bash
-docker run -it -p 8001:8001 chengyentsai851010/master_server
+git clone https://github.com/Max851010/distributed_postgresql.git
 ```
 
-3. Update Node
+2. Download PostgreSQL locally
 
-```bash
-docker run -it -p 8002:8002 chengyentsai851010/update_server
-```
+- [PostgreSQL](https://www.postgresql.org/download/)
+- create user `kenyang` with password `ken890404`
+
+3. Prepare 6 nodes
+
+- Client node
+  Note you have to modify all the port and address in `db_client.py`
+  ```bash
+  cd client
+  pip install -r requirements.txt
+  python3 db_client.py
+  ```
+- Master node
+  Note you have to modify all the port and address in `master_server.py`
+  ```bash
+  cd master_server
+  pip install -r requirements.txt
+  python3 master_server.py
+  ```
+- Update node
+  Note you have to modify all the port and address in `update_server.py`
+  ```bash
+  cd update_server
+  pip install -r requirements.txt
+  cd update
+  python3 update_server.py
+  ```
+- Replica node
+  Note you have to modify all the port and address in `replica_server.py`
+  ```bash
+  cd update_server
+  pip install -r requirements.txt
+  cd replica
+  python3 replica_server.py
+  ```
