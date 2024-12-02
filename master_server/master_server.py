@@ -95,7 +95,7 @@ def check_node_health_and_send_query(sharding_id, query, query_type):
                 f"[Master Server] Connected to Sharding {sharding_id} with main node {main_node['host']}:{main_node['port']}"
             )
             sharding_socket.sendall(query.encode('utf-8'))
-            response = sharding_socket.recv(1024).decode('utf-8')
+            response = sharding_socket.recv(2048).decode('utf-8')
             print(
                 f"[Master Server] Received response from Sharding {sharding_id}: {response}"
             )  # Troubleshooting print
@@ -318,7 +318,6 @@ def handle_request(client_socket):
                 response = ""
 
                 response = check_node_health_and_send_query(i, query, "SELECT")
-                print(type(response))
 
                 if "FAILED" in response:
                     print(
@@ -339,18 +338,20 @@ def handle_request(client_socket):
         response = ""
 
         for i in range(2):
-            if i == 0 and values_shard_0 != "":
+            updated_query = None
+            if i == 0 and values_shard_0 != "" and values_shard_1 is not None:
                 updated_query = f"INSERT INTO {table_name} {columns_list} VALUES {values_shard_0};"
-            elif i == 1 and values_shard_1 != "":
+            elif i == 1 and values_shard_1 != "" and values_shard_0 is not None:
                 updated_query = f"INSERT INTO {table_name} {columns_list} VALUES {values_shard_1};"
-            print(
-                f"[Master Server] Forwarding query to Sharding {i} Server: {updated_query}"
-            )
+            if (updated_query is not None):
+                print(
+                    f"[Master Server] Forwarding query to Sharding {i} Server: {updated_query}"
+                )
 
-            response += check_node_health_and_send_query(
-                i, updated_query, "INSERT") + "\n"
-            if "FAILED" not in response:
-                client_socket.sendall(response.encode('utf-8'))
+                response += check_node_health_and_send_query(
+                    i, updated_query, "INSERT") + "\n"
+                if "FAILED" not in response:
+                    client_socket.sendall(response.encode('utf-8'))
 
         if "FAILED" in response:
             print(
