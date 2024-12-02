@@ -23,7 +23,7 @@ deactivate
 pip3 freeze > requirements.txt
 ```
 
-## Execution locally
+## Local execution
 
 1. Download the repository
 
@@ -34,7 +34,6 @@ git clone https://github.com/Max851010/distributed_postgresql.git
 2. Download PostgreSQL locally
 
 - [PostgreSQL](https://www.postgresql.org/download/)
-- create user `kenyang` with password `ken890404`
 
 3. Prepare 6 nodes
 
