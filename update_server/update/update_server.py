@@ -152,13 +152,13 @@ def execute_sql_message(sql_message):
         # If execution is successful, return success message with the SQL command
         if sql_message.startswith("SELECT"):
             res = cursor.fetchall()
-            res_string = "\n".join(
-                [", ".join(f"{desc[0]}: {str(value)}" for desc, value in zip(cursor.description, row))
-                 for row in res]
-            )
+            res_string = "\n".join([
+                ", ".join(f"{desc[0]}: {str(value)}"
+                          for desc, value in zip(cursor.description, row))
+                for row in res
+            ])
             return res_string
         return f"Ack: {sql_message}"
-        
     except Exception as error:
         print(f"Error executing SQL: {error}")
         # If execution fails, return failure message with the SQL command

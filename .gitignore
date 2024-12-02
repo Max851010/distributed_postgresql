@@ -1,5 +1,7 @@
 .venv/
 __pycache__/
 tests/__pycache__/*
-update_server/sql_log.txt
-update_server/sql_log_diff.txt
+update_server/update/sql_log.txt
+update_server/update/sql_log_diff.txt
+update_server/replica/sql_log.txt
+update_server/replica/sql_log_diff.txt
