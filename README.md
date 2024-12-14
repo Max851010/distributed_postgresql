@@ -24,7 +24,7 @@ This project implements a fault-tolerant distributed database system designed fo
 - **Efficient Query Processing**: Handles concurrent requests with non-blocking socket communication.
 - **Scalability**: Enables rapid deployment and testing with Docker and CI/CD pipelines.
 
-## Syetem Architecture
+## System Architecture
 
 ![System Architecture](assets/sysdesign.jpg)
 The project deploys six nodes:
