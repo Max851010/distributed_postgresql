@@ -85,10 +85,6 @@ git clone https://github.com/Max851010/distributed_postgresql.git
 cd distributed_postgresql
 ```
 
-### Download PostgreSQL locally
-
-- [PostgreSQL](https://www.postgresql.org/download/)
-
 ### Node Setup
 
 Each node requires specific configurations for ports and addresses in the respective Python files:
