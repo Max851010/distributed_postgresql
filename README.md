@@ -1,5 +1,18 @@
 # Fault-Tolerant Distributed PostgreSQL System for AVNs
 
+## Table of Contents
+1. [Overview](#overview)
+2. [System Architecture](#system-architecture)
+3. [Environment Setup](#environment-setup)
+    - [Prerequisites](#prerequisites)
+    - [Virtual Environment](#virtual-environment)
+4. [Local Execution](#local-execution)
+    - [Clone Repository](#clone-repository)
+    - [Node Setup](#node-setup)
+5. [Containerized Deployment](#containerized-deployment)
+6. [Results and Testing](#results-and-testing)
+7. [References](#references)
+
 ## Overview
 
 This project implements a fault-tolerant distributed database system designed for **Autonomous Vehicle Networks (AVNs)**. It ensures reliable, scalable, and efficient data management in dynamic environments through advanced data sharding, fault-tolerance mechanisms, and containerized deployment.
